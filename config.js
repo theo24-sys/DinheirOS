@@ -25,6 +25,12 @@ module.exports = {
       perAccessAmount: 150,
       rollover: true
     },
+    Betting: {
+      weeklyAmount: 100,
+      maxCount: 2,
+      perAccessAmount: 50,
+      rollover: true
+    },
     Energy: {
       weeklyAmount: 180,
       maxCount: 3,

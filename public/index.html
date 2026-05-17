@@ -711,7 +711,8 @@
       Fare: '🚍 Fare',
       Tokens: '⚡ Tokens',
       Data: '📡 Data',
-      Meat: '🥩 Meat',
+      Meat: '🍖 Meat',
+      Betting: '🎰 Betting',
       Energy: '☕ Energy'
     };
 
@@ -719,7 +720,8 @@
       Fare: 'var(--card-fare)',
       Tokens: 'var(--card-tokens)',
       Data: 'var(--card-data)',
-      Meat: 'var(--card-meat)',
+      Meat: 'linear-gradient(135deg, #b91c1c, #7f1d1d)',
+      Betting: 'linear-gradient(135deg, #16a34a, #15803d)',
       Energy: 'var(--card-energy)'
     };
 
@@ -727,7 +729,8 @@
       Fare: '🚍',
       Tokens: '⚡',
       Data: '📡',
-      Meat: '🥩',
+      Meat: '🍖',
+      Betting: '🎰',
       Energy: '☕'
     };
 
@@ -833,6 +836,7 @@
         showNav(false);
         showAuthScreen();
         setAuthMode('login');
+        resetPinEntry();
         renderPad(onPad);
         updateDots();
         return res;
@@ -896,9 +900,10 @@
     async function showDashboard() {
       document.getElementById('pinScreen').style.display = 'none';
       document.getElementById('authShell').classList.add('hidden');
-      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('dashboardShell').classList.remove('hidden');
       showNav(true);
-      document.getElementById('greeting').textContent = getGreeting();
+      setGreeting();
       showTab('home');
       loadWallets();
       loadHistory();
@@ -924,19 +929,35 @@
 
     function setGreeting() {
       const greeting = getGreeting();
-      document.getElementById('greeting').textContent = `Hey Timothy 👋`;
+      const greetingEl = document.getElementById('greeting');
+      if (greetingEl) greetingEl.textContent = `${greeting} Timothy 👋`;
       document.getElementById('homeGreeting').textContent = `${greeting} Timothy`;
     }
 
     function showTab(name) {
+      currentTab = name;
+      const map = { home: 'homeTab', wallets: 'walletsTab', history: 'historyTab', settings: 'settingsTab' };
       ['home','wallets','history','settings'].forEach(t => {
-        const el = document.getElementById('tab-' + t);
+        const el = document.getElementById(map[t]);
         if (el) el.style.display = t === name ? 'block' : 'none';
         const btn = document.getElementById('nav-' + t);
         if (btn) btn.classList.toggle('active', t === name);
       });
       if (name === 'wallets') loadWallets();
       if (name === 'history') loadHistory();
+      if (name === 'home') {
+        loadWallets();
+        loadHistory();
+      }
+    }
+
+    function resetPinEntry() {
+      pinTemp = '';
+      firstPinEntry = null;
+      updateDots();
+      const attemptInfo = document.getElementById('attemptInfo');
+      if (attemptInfo) attemptInfo.textContent = '';
+      setAuthMessage('Enter PIN to unlock');
     }
 
     async function submitPin() {
@@ -1242,19 +1263,25 @@
           const usedPct = walletProgressPercent(w);
           const isLocked = Boolean(w.locked);
           const todayUsed = Number(w.used_today || 0) > 0;
+          const accent = walletColor(w.name);
 
           const card = document.createElement('div');
           card.className = 'wallet-card';
           card.setAttribute('data-wallet', w.name);
           card.innerHTML =
             '<div class="wallet-head">' +
-              '<div class="wallet-name">' + (walletIcon(w.name) + ' ' + walletLabel(w.name)) + '</div>' +
+              '<div class="wallet-name" style="display:flex;align-items:center;gap:8px;">' +
+                '<span style="width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.22);color:#fff;font-size:18px;text-shadow:0 1px 2px rgba(0,0,0,0.25);box-shadow:inset 0 1px 0 rgba(255,255,255,0.18);">' + walletIcon(w.name) + '</span>' +
+                '<span>' + walletLabel(w.name) + '</span>' +
+              '</div>' +
               '<div class="lock-badge" style="display:' + (isLocked ? 'inline-flex' : 'none') + ';">LOCKED</div>' +
             '</div>' +
             '<div class="wallet-amount">Ksh ' + (Number(w.balance || w.weekly_amount || 0)) + '</div>' +
             '<div class="wallet-progress-track"><div class="wallet-progress-fill" style="width:' + usedPct + '%"></div></div>' +
-            '<div class="wallet-uses">' + (w.used_this_week || 0) + ' of ' + (w.weekly_max_count || 0) + ' uses this week</div>' +
+            '<div class="wallet-uses">' + (w.used_this_week || 0) + ' of ' + (w.weekly_max_count || 0) + ' sessions this week</div>' +
             '<button class="request-btn" ' + (isLocked ? 'disabled' : '') + '>' + (isLocked ? '🔒 Locked' : (todayUsed ? '✓ Used Today' : 'Request Access')) + '</button>';
+
+          card.style.background = accent;
 
           const btn = card.querySelector('button');
           if (btn) {
@@ -1271,6 +1298,19 @@
 
         const cardsFull = document.getElementById('walletCardsFull');
         if (cardsFull) cardsFull.innerHTML = cards.innerHTML;
+
+        const quickAccess = document.getElementById('quickAccess');
+        if (quickAccess) {
+          quickAccess.innerHTML = wallets.map(w => {
+            const perAccess = Number(w.per_access_amount || w.perAccess || 0);
+            return `
+              <button class="quick-btn" type="button" onclick="requestAccess('${w.name}', ${perAccess})">
+                <span>${walletIcon(w.name)}</span>
+                <span>${walletLabel(w.name).replace(/^[^ ]+\s/, '') || w.name}<br>Ksh ${perAccess}</span>
+              </button>
+            `;
+          }).join('');
+        }
       } catch (err) {
         console.error('loadWallets error', err);
         pushError(err.stack || err.message || String(err));
@@ -1315,7 +1355,9 @@
       await api('/auth/lock', { method: 'POST' });
       clearToken();
       document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('dashboardShell').classList.add('hidden');
       showNav(false);
+      resetPinEntry();
       renderPinLogin();
     }
 
@@ -1327,6 +1369,7 @@
         await api('/auth/lock', { method: 'POST' });
         clearToken();
         showNav(false);
+        resetPinEntry();
         renderPinLogin();
       }
     });
@@ -1384,9 +1427,9 @@
       }
     }
 
-    function renderPinSetup() { setAuthMode('setup'); showAuthScreen(); renderPad(onPad); updateDots(); setAuthMessage('Set your access PIN', 'success'); }
+    function renderPinSetup() { setAuthMode('setup'); showAuthScreen(); resetPinEntry(); renderPad(onPad); updateDots(); setAuthMessage('Set your access PIN', 'success'); }
 
-    function renderPinLogin() { setAuthMode('login'); showAuthScreen(); renderPad(onPad); updateDots(); setAuthMessage('Enter PIN to unlock'); }
+    function renderPinLogin() { setAuthMode('login'); showAuthScreen(); resetPinEntry(); renderPad(onPad); updateDots(); setAuthMessage('Enter PIN to unlock'); }
 
     function updateFingerprintVisibility() {
       const fpBtn = document.getElementById('fpBtn');

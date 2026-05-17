@@ -694,8 +694,9 @@
   </nav>
 
   <script>
+    document.addEventListener('DOMContentLoaded', () => {
     // In-memory token only
-    let sessionToken = sessionStorage.getItem('st') || null;
+    let sessionToken = null;
     let pinTemp = null;
     let firstPinEntry = null;
     let pinMode = 'login';
@@ -729,6 +730,20 @@
       Energy: '☕'
     };
 
+    function saveToken(token) {
+      sessionToken = token;
+      try { sessionStorage.setItem('st', token); } catch (e) {}
+    }
+
+    function clearToken() {
+      sessionToken = null;
+      try { sessionStorage.removeItem('st'); } catch (e) {}
+    }
+
+    function getSavedToken() {
+      try { return sessionStorage.getItem('st'); } catch (e) { return null; }
+    }
+
     function getGreeting() {
       const h = new Date().getHours();
       if (h < 12) return 'Good morning';
@@ -757,12 +772,11 @@
     async function api(path, opts={}) {
       opts.headers = opts.headers || {};
       opts.headers['Content-Type'] = 'application/json';
-      const token = sessionToken || sessionStorage.getItem('st');
+      const token = sessionToken || getSavedToken();
       if (token) opts.headers['Authorization'] = 'Bearer ' + token;
       const res = await fetch('/api' + path, opts);
       if (res.status === 401) {
-        sessionToken = null;
-        sessionStorage.removeItem('st');
+        clearToken();
         showNav(false);
         showAuthScreen();
         setAuthMode('login');
@@ -899,8 +913,7 @@
           const r = await api('/auth/setup', { method:'POST', body: JSON.stringify({ pin: firstPinEntry }) });
           if (r.ok) {
             const j = await r.json();
-            sessionToken = j.token;
-            sessionStorage.setItem('st', sessionToken);
+            saveToken(j.token);
             animateAuthSuccess();
             showToast('✅ PIN set successfully', 'success');
             showNav(true);
@@ -919,8 +932,7 @@
         const r = await api('/auth/login', { method:'POST', body: JSON.stringify({ pin: pinTemp }) });
         if (r.ok) {
           const j = await r.json();
-          sessionToken = j.token;
-          sessionStorage.setItem('st', sessionToken);
+          saveToken(j.token);
           animateAuthSuccess();
           showToast('✅ Access granted', 'success');
           showNav(true);
@@ -980,8 +992,7 @@
           });
           if (r.ok) {
             const j = await r.json();
-            sessionToken = j.token;
-            sessionStorage.setItem('st', sessionToken);
+            saveToken(j.token);
             showNav(true);
             showDashboard();
           }
@@ -1088,8 +1099,7 @@
           });
           if (r.ok) {
             const j = await r.json();
-            sessionToken = j.token;
-            sessionStorage.setItem('st', sessionToken);
+            saveToken(j.token);
             showNav(true);
             showDashboard();
           }
@@ -1243,8 +1253,7 @@
 
     async function lockApp() {
       await api('/auth/lock', { method: 'POST' });
-      sessionToken = null;
-      sessionStorage.removeItem('st');
+      clearToken();
       document.getElementById('dashboard').style.display = 'none';
       showNav(false);
       renderPinLogin();
@@ -1255,8 +1264,7 @@
     document.addEventListener('visibilitychange', async () => {
       if (document.hidden && sessionToken) {
         await api('/auth/lock', { method: 'POST' });
-        sessionToken = null;
-        sessionStorage.removeItem('st');
+        clearToken();
         showNav(false);
         renderPinLogin();
       }
@@ -1265,31 +1273,35 @@
     async function initAuth() {
       try {
         // Test connection first
-        const ping = await fetch('/health').catch(() => null);
+        const ping = await fetch('/health', { signal: AbortSignal.timeout(3000) }).catch(() => null);
         if (!ping || !ping.ok) {
           const splash = document.getElementById('splash');
           if (splash) {
-            splash.innerHTML += '<p style="color:#ef4444;margin-top:16px;font-size:12px;">Cannot reach server — make sure Termux is running</p>';
+            splash.style.opacity = '1';
+            splash.style.display = 'flex';
+            splash.innerHTML += '<p style="color:#ef4444;margin-top:20px;font-size:13px;text-align:center;">⚠️ Server not reachable<br>Make sure Termux is running<br>node server.js</p>';
           }
           return;
         }
 
-        const savedToken = sessionStorage.getItem('st');
+        const savedToken = getSavedToken();
         if (savedToken) {
           sessionToken = savedToken;
           try {
-            const r = await api('/auth/status');
+            const r = await fetch('/api/auth/status', {
+              headers: { Authorization: 'Bearer ' + savedToken }
+            }).catch(() => null);
             if (r.ok) {
               showNav(true);
               await showDashboard();
               return;
             }
           } catch (e) {}
-          sessionToken = null;
-          sessionStorage.removeItem('st');
+          clearToken();
         }
 
-        const pinSet = await checkPinStatus();
+        const r2 = await fetch('/api/auth/status').catch(() => null);
+        const pinSet = r2 && r2.ok ? (await r2.json()).pinSet : false;
         showNav(false);
         if (!pinSet) renderPinSetup();
         else renderPinLogin();
@@ -1347,6 +1359,7 @@
     });
 
     init();
+    });
   </script>
 </body>
 </html>

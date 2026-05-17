@@ -562,6 +562,49 @@
       </div>
     </div>
 
+    <div id="dashboard" style="display:none; padding:16px; padding-bottom:100px;">
+      
+      <!-- Home tab -->
+      <div id="tab-home">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.6);" id="greeting">Good evening</div>
+            <div style="font-size:22px;font-weight:800;">Timothy 👋</div>
+          </div>
+          <button onclick="lockApp()" style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:18px;cursor:pointer;">🔒</button>
+        </div>
+        <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:20px;padding:20px;margin-bottom:20px;">
+          <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:4px;">Weekly Budget</div>
+          <div style="font-size:36px;font-weight:800;color:#fff;">Ksh 1,250</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:8px;">Resets every Monday at midnight</div>
+        </div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px;">Your Wallets</div>
+        <div id="walletCards" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>
+      </div>
+
+      <!-- Wallets tab -->
+      <div id="tab-wallets" style="display:none;">
+        <div style="font-size:20px;font-weight:800;margin-bottom:16px;">All Wallets</div>
+        <div id="walletCardsFull" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>
+      </div>
+
+      <!-- History tab -->
+      <div id="tab-history" style="display:none;">
+        <div style="font-size:20px;font-weight:800;margin-bottom:16px;">Access Log</div>
+        <div id="logList"></div>
+      </div>
+
+      <!-- Settings tab -->
+      <div id="tab-settings" style="display:none;">
+        <div style="font-size:20px;font-weight:800;margin-bottom:16px;">Settings</div>
+        <div style="background:rgba(255,255,255,0.07);border-radius:16px;padding:16px;">
+          <div style="font-size:14px;color:rgba(255,255,255,0.6);margin-bottom:8px;">App Version</div>
+          <div style="font-size:16px;font-weight:600;">DinheirOS v1.0.0</div>
+        </div>
+      </div>
+
+    </div>
+
     <div id="dashboardShell" class="dashboard-shell hidden" style="width:100%;">
       <div class="dashboard-top">
         <div>
@@ -772,24 +815,22 @@
     }
 
     function showAuthScreen() {
-      document.getElementById('authShell').classList.remove('hidden');
-      document.getElementById('dashboardShell').classList.add('hidden');
-      document.getElementById('dashboardShell').style.position = 'absolute';
-      document.getElementById('authShell').style.position = 'relative';
       document.getElementById('pinScreen').style.display = 'flex';
+      document.getElementById('authShell').classList.remove('hidden');
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('dashboardShell').classList.add('hidden');
+      document.getElementById('authShell').style.position = 'relative';
     }
 
-    function showDashboard() {
-      const authShell = document.getElementById('authShell');
-      const dashShell = document.getElementById('dashboardShell');
-      authShell.classList.add('hidden');
-      dashShell.classList.remove('hidden');
-      dashShell.classList.add('visible');
-      dashShell.style.position = 'relative';
-      authShell.style.position = 'absolute';
+    async function showDashboard() {
       document.getElementById('pinScreen').style.display = 'none';
-      setGreeting();
-      showTab(currentTab || 'home');
+      document.getElementById('authShell').classList.add('hidden');
+      document.getElementById('dashboard').style.display = 'block';
+      showNav(true);
+      document.getElementById('greeting').textContent = getGreeting();
+      showTab('home');
+      loadWallets();
+      loadHistory();
     }
 
     function renderAuthFooter() {
@@ -816,15 +857,15 @@
       document.getElementById('homeGreeting').textContent = `${greeting} Timothy`;
     }
 
-    function showTab(tab) {
-      currentTab = tab;
-      const tabs = ['home', 'wallets', 'history', 'settings'];
-      tabs.forEach(name => {
-        const panel = document.getElementById(name + 'Tab');
-        const nav = document.getElementById('nav-' + name);
-        if (panel) panel.classList.toggle('active', name === tab);
-        if (nav) nav.classList.toggle('active', name === tab);
+    function showTab(name) {
+      ['home','wallets','history','settings'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.style.display = t === name ? 'block' : 'none';
+        const btn = document.getElementById('nav-' + t);
+        if (btn) btn.classList.toggle('active', t === name);
       });
+      if (name === 'wallets') loadWallets();
+      if (name === 'history') loadHistory();
     }
 
     async function submitPin() {
@@ -957,6 +998,25 @@
       return Math.min(100, Math.max(0, (used / maxCount) * 100));
     }
 
+    async function requestAccess(walletName, amount) {
+      showToast('Processing...', 'warning');
+      try {
+        const r = await api('/withdraw', {
+          method: 'POST',
+          body: JSON.stringify({ wallet: walletName, amount: amount })
+        });
+        const j = await r.json();
+        if (r.ok) {
+          showToast('✅ Ksh ' + amount + ' released — ' + walletName, 'success');
+          loadWallets();
+        } else {
+          showToast('⛔ ' + (j.error || 'Access denied'), 'error');
+        }
+      } catch (err) {
+        showToast('⛔ Connection error', 'error');
+      }
+    }
+
     function showRipple(button, event) {
       const rect = button.getBoundingClientRect();
       const size = Math.max(rect.width, rect.height);
@@ -998,65 +1058,89 @@
       }
     }
 
-    async function loadWallets(){
+    async function loadWallets() {
       const r = await api('/status');
       if (!r.ok) return;
       const j = await r.json();
-      cachedWallets = j.wallets || [];
       const cards = document.getElementById('walletCards');
-      const quick = document.getElementById('quickAccess');
-      const totalWeekly = document.getElementById('weeklyTotal');
-      const totalFill = document.getElementById('weeklyFill');
-      if (cards) cards.innerHTML='';
-      if (quick) quick.innerHTML='';
-      const wallets = cachedWallets;
-      const total = wallets.reduce((sum, w) => sum + Number(w.weekly_amount || 0), 0);
-      const used = wallets.reduce((sum, w) => sum + (Number(w.weekly_max_count || 0) * Number(w.weekly_amount || 0) - Number(w.balance || 0)), 0);
-      const totalPossible = wallets.reduce((sum, w) => sum + Number(w.weekly_amount || 0), 0) || 1;
-      if (totalWeekly) totalWeekly.textContent = `Ksh ${total.toLocaleString()}`;
-      if (totalFill) totalFill.style.width = `${Math.min(100, Math.max(0, (used / totalPossible) * 100))}%`;
+      if (!cards) return;
 
-      wallets.forEach((w, index) => {
-        const c=document.createElement('div');
-        const label = walletLabel(w.name);
-        const progress = walletProgressPercent(w);
-        const amount = w.weekly_max_count ? (w.weekly_amount / w.weekly_max_count) : 0;
-        const isLocked = Number(w.locked) === 1 || Number(w.locked) === true;
-        c.className='wallet-card card';
-        c.dataset.wallet = w.name;
-        c.style.animationDelay = `${index * 0.1}s`;
-        c.innerHTML = `
-          <div class="wallet-head">
-            <div>
-              <div class="wallet-name">${walletIcon(w.name)} ${label}</div>
-            </div>
-            ${isLocked ? '<span class="lock-badge">LOCKED</span>' : ''}
-          </div>
-          <div class="wallet-amount">Ksh ${Number(w.weekly_amount || 0).toLocaleString()}</div>
-          <div class="wallet-progress-track"><div class="wallet-progress-fill" style="width:${progress}%"></div></div>
-          <div class="wallet-uses">${Number(w.used_this_week || 0)} of ${Number(w.weekly_max_count || 0)} uses</div>
-          <button class="request-btn" type="button" data-wallet-btn="${w.name}">Request Access</button>
-        `;
-        c.style.background = walletColor(w.name);
-        const btn = c.querySelector('button');
-        btn.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          showRipple(btn, e.touches?.[0]);
-          withdrawWallet(w, amount);
-        }, { passive: false });
-        btn.addEventListener('click', (e) => {
-          showRipple(btn, e);
-          withdrawWallet(w, amount);
+      const emojis = { Fare:'🚍', Tokens:'⚡', Data:'📡', Meat:'🥩', Energy:'☕' };
+      const gradients = {
+        Fare: 'linear-gradient(135deg,#06b6d4,#0891b2)',
+        Tokens: 'linear-gradient(135deg,#f59e0b,#d97706)',
+        Data: 'linear-gradient(135deg,#3b82f6,#2563eb)',
+        Meat: 'linear-gradient(135deg,#ef4444,#dc2626)',
+        Energy: 'linear-gradient(135deg,#8b5cf6,#7c3aed)'
+      };
+
+      cards.innerHTML = '';
+
+      (j.wallets || []).forEach((w, i) => {
+        const perAccess = Math.round(w.weekly_amount / w.weekly_max_count);
+        const usedPct = w.weekly_max_count > 0 ? (w.used_this_week / w.weekly_max_count) * 100 : 0;
+        const isLocked = w.used_this_week >= w.weekly_max_count;
+        const todayUsed = w.used_today >= 1;
+        const gradient = gradients[w.name] || 'linear-gradient(135deg,#7c3aed,#a78bfa)';
+        const emoji = emojis[w.name] || '💰';
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+      background:${gradient};
+      border-radius:20px;
+      padding:16px;
+      animation:fadeInUp 0.4s ease ${i * 0.1}s both;
+      position:relative;
+      overflow:hidden;
+    `;
+
+        card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:22px;">${emoji}</span>
+        ${isLocked ? '<span style="background:rgba(255,255,255,0.25);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:0.05em;">LOCKED</span>' : ''}
+        ${todayUsed && !isLocked ? '<span style="background:rgba(0,0,0,0.2);color:#fff;font-size:10px;padding:3px 8px;border-radius:20px;">Used today</span>' : ''}
+      </div>
+      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:4px;">${w.name}</div>
+      <div style="font-size:24px;font-weight:800;color:#fff;margin-bottom:12px;">Ksh ${perAccess}</div>
+      <div style="background:rgba(255,255,255,0.25);border-radius:4px;height:4px;margin-bottom:6px;">
+        <div style="background:#fff;height:4px;border-radius:4px;width:${usedPct}%;transition:width 0.5s ease;"></div>
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-bottom:12px;">${w.used_this_week} of ${w.weekly_max_count} uses this week</div>
+      <button
+        onclick="requestAccess('${w.name}', ${perAccess})"
+        style="
+          width:100%;
+          padding:10px;
+          border-radius:12px;
+          border:none;
+          background:rgba(255,255,255,0.95);
+          color:${gradient.includes('06b6d4') ? '#0891b2' : gradient.includes('f59e0b') ? '#d97706' : gradient.includes('3b82f6') ? '#2563eb' : gradient.includes('ef4444') ? '#dc2626' : '#7c3aed'};
+          font-weight:700;
+          font-size:14px;
+          cursor:pointer;
+          transition:transform 0.1s ease,opacity 0.1s ease;
+          ${isLocked ? 'opacity:0.5;pointer-events:none;' : ''}
+        "
+        ${isLocked ? 'disabled' : ''}
+      >
+        ${isLocked ? '🔒 Locked' : todayUsed ? '✓ Used Today' : 'Request Access'}
+      </button>
+    `;
+
+        card.querySelector('button')?.addEventListener('touchstart', (e) => {
+          e.currentTarget.style.transform = 'scale(0.96)';
         });
-        if (cards) cards.appendChild(c);
+        card.querySelector('button')?.addEventListener('touchend', (e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+        });
 
-        const quickBtn = document.createElement('button');
-        quickBtn.className = 'quick-btn';
-        quickBtn.type = 'button';
-        quickBtn.innerHTML = `<span>${walletIcon(w.name)}</span><span>${walletLabel(w.name).replace(/^[^ ]+ /, '')}</span>`;
-        quickBtn.addEventListener('click', () => showTab('wallets'));
-        if (quick) quick.appendChild(quickBtn);
+        cards.appendChild(card);
       });
+
+      const cardsFull = document.getElementById('walletCardsFull');
+      if (cardsFull) {
+        cardsFull.innerHTML = cards.innerHTML;
+      }
     }
 
     function formatTimestamp(value) {
@@ -1066,74 +1150,39 @@
       return new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit', month: 'short', day: '2-digit' }).format(date);
     }
 
-    async function loadHistory(){
-      const r = await api('/history');
+    async function loadHistory() {
       const list = document.getElementById('logList');
-      const recent = document.getElementById('recentActivity');
-      if (!r.ok) {
-        if (list) list.innerHTML = '<div class="muted">Unable to load history</div>';
-        if (recent) recent.innerHTML = '<div class="muted">Unable to load history</div>';
-        return;
+      if (!list) return;
+      list.innerHTML = '<div style="color:rgba(255,255,255,0.5);text-align:center;padding:20px;">Loading...</div>';
+      try {
+        const r = await api('/history');
+        if (!r.ok) { list.innerHTML = '<div style="color:#ef4444;text-align:center;">Failed to load</div>'; return; }
+        const rows = await r.json();
+        if (!rows.length) { list.innerHTML = '<div style="color:rgba(255,255,255,0.5);text-align:center;padding:20px;">No transactions yet</div>'; return; }
+        list.innerHTML = rows.map(row => `
+      <div style="background:rgba(255,255,255,0.07);border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${row.type === 'withdraw' ? '#10b981' : '#ef4444'};">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${row.wallet_name || row.wallet}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);">${new Date(row.timestamp).toLocaleString()}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px;font-weight:700;color:#10b981;">Ksh ${row.amount}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.5);">${row.note || row.type}</div>
+        </div>
+      </div>
+    `).join('');
+      } catch (err) {
+        list.innerHTML = '<div style="color:#ef4444;text-align:center;">Error loading history</div>';
       }
-      const j = await r.json();
-      cachedHistory = j || [];
-      if (list) list.innerHTML = '';
-      if (recent) recent.innerHTML = '';
-      if (!cachedHistory.length) {
-        if (list) list.innerHTML = '<div class="muted">No activity yet</div>';
-        if (recent) recent.innerHTML = '<div class="muted">No activity yet</div>';
-        return;
-      }
-      cachedHistory.forEach((row, index) => {
-        const status = String(row.status || row.type || '').toLowerCase();
-        const approved = status === 'success' || status === 'approved' || status === 'withdraw';
-        const denied = status === 'denied' || status === 'failed';
-        const reason = row.note || row.reason || (approved ? 'Approved' : 'Denied');
-        const label = walletLabel(row.wallet_name || row.walletId || 'Wallet');
-        const emoji = walletIcon(row.wallet_name || row.walletId || 'Wallet');
-        const amount = row.amount ? `Ksh ${Number(row.amount).toLocaleString()}` : '';
-        const time = formatTimestamp(row.timestamp);
-        if (list) {
-          const accessRow = document.createElement('div');
-          accessRow.className = 'history-row ' + (denied ? 'denied' : 'approved');
-          accessRow.innerHTML = `
-            <div class="history-left">
-              <div class="history-title">${approved ? '✅' : '⛔'} ${emoji} ${label}</div>
-              <div class="history-subtitle">${reason}${amount ? ' • ' + amount : ''}</div>
-            </div>
-            <div class="status-pill ${denied ? 'denied' : 'approved'}">${approved ? 'Approved' : 'Denied'}</div>
-          `;
-          list.appendChild(accessRow);
-        }
-        if (recent && index < 3) {
-          const recentItem = document.createElement('div');
-          recentItem.className = 'recent-item';
-          recentItem.innerHTML = `
-            <div class="left">
-              <div class="title">${emoji} ${label}</div>
-              <div class="sub">${reason}${amount ? ' • ' + amount : ''}</div>
-            </div>
-            <div class="status-chip ${denied ? 'denied' : 'approved'}">${time}</div>
-          `;
-          recent.appendChild(recentItem);
-        }
-      });
     }
 
-    async function lockApp(){
-      if (!sessionToken) return;
-      await api('/lock', { method: 'POST' });
+    async function lockApp() {
+      await api('/auth/lock', { method: 'POST' });
       sessionToken = null;
       sessionStorage.removeItem('st');
-      pinTemp = null;
-      firstPinEntry = null;
-      setAuthMode('login');
-      setAuthMessage('');
+      document.getElementById('dashboard').style.display = 'none';
       showNav(false);
-      showAuthScreen();
-      renderPad(onPad);
-      updateDots();
-      showToast('🔒 Locked', 'warning');
+      renderPinLogin();
     }
 
     document.getElementById('lockBtn').addEventListener('click', lockApp);
@@ -1144,20 +1193,9 @@
         sessionToken = null;
         sessionStorage.removeItem('st');
         showNav(false);
-        renderAuthScreenForLock();
+        renderPinLogin();
       }
     });
-
-    function renderAuthScreenForLock() {
-      pinTemp = null;
-      firstPinEntry = null;
-      setAuthMode('login');
-      setAuthMessage('');
-      showAuthScreen();
-      renderPad(onPad);
-      updateDots();
-      showToast('🔒 Locked', 'warning');
-    }
 
     async function initAuth() {
       const savedToken = sessionStorage.getItem('st');
@@ -1167,8 +1205,6 @@
         if (r.ok) {
           showNav(true);
           showDashboard();
-          loadWallets();
-          loadHistory();
           return;
         } else {
           sessionToken = null;
@@ -1181,21 +1217,9 @@
       else renderPinLogin();
     }
 
-    function renderPinSetup() {
-      setAuthMode('setup');
-      showAuthScreen();
-      renderPad(onPad);
-      updateDots();
-      setAuthMessage('Set your access PIN', 'success');
-    }
+    function renderPinSetup() { setAuthMode('setup'); showAuthScreen(); renderPad(onPad); updateDots(); setAuthMessage('Set your access PIN', 'success'); }
 
-    function renderPinLogin() {
-      setAuthMode('login');
-      showAuthScreen();
-      renderPad(onPad);
-      updateDots();
-      setAuthMessage('Enter PIN to unlock');
-    }
+    function renderPinLogin() { setAuthMode('login'); showAuthScreen(); renderPad(onPad); updateDots(); setAuthMessage('Enter PIN to unlock'); }
 
     function updateFingerprintVisibility() {
       const fpBtn = document.getElementById('fpBtn');
@@ -1204,10 +1228,6 @@
       } else {
         fpBtn.style.display = 'none';
       }
-    }
-
-    function showNav(visible) {
-      document.querySelector('.bottom-nav').style.display = visible ? 'flex' : 'none';
     }
 
     async function init() {

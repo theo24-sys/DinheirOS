@@ -36,15 +36,21 @@ async function isLockedOut() {
 
 async function createSession() {
   const token = crypto.randomUUID();
-  await execStmt('INSERT INTO sessions (token, created_at, last_active) VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)', [token]);
+  const now = Date.now();
+  await execStmt('INSERT INTO sessions (token, created_at, last_active) VALUES (?, ?, ?)', [token, now, now]);
   return token;
 }
 
 async function validateSession(token) {
-  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const rows = await runQuery('SELECT id FROM sessions WHERE token = ? AND last_active > ?', [token, cutoff]);
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  const rows = await runQuery('SELECT id, last_active FROM sessions WHERE token = ?', [token]);
   if (rows.length > 0) {
-    await execStmt('UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = ?', [token]);
+    const rawLastActive = rows[0].last_active;
+    const numericLastActive = typeof rawLastActive === 'number' ? rawLastActive : Number(rawLastActive) || Date.parse(rawLastActive);
+    if (!Number.isFinite(numericLastActive) || numericLastActive < cutoff) {
+      return false;
+    }
+    await execStmt('UPDATE sessions SET last_active = ? WHERE token = ?', [Date.now(), token]);
     return true;
   }
   return false;

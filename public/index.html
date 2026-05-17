@@ -541,6 +541,10 @@
       <div style="height:100%;background:linear-gradient(90deg,#7c3aed,#a78bfa);animation:loadbar 2s ease forwards;"></div>
     </div>
     <div id="startupStatus" style="margin-top:18px;min-height:42px;padding:0 24px;color:rgba(255,255,255,0.75);font-size:13px;text-align:center;line-height:1.4;"></div>
+    <pre id="startupErrors" style="display:none;white-space:pre-wrap;color:#fff;margin-top:8px;padding:0 20px;font-size:12px;line-height:1.3;max-height:140px;overflow:auto;border-top:1px solid rgba(255,255,255,0.03);"></pre>
+    <div style="display:flex;justify-content:center;margin-top:8px;">
+      <button id="showDebugBtn" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);padding:6px 12px;border-radius:10px;font-size:12px;">Show Debug</button>
+    </div>
   </div>
 
   <div class="app">
@@ -751,6 +755,40 @@
       status.textContent = message || '';
       status.style.color = color || 'rgba(255,255,255,0.75)';
     }
+
+    // Runtime error capture (visible in splash) -------------------------------------------------
+    window._capturedErrors = [];
+    function pushError(msg) {
+      try {
+        window._capturedErrors.push({ ts: Date.now(), msg: String(msg) });
+        const el = document.getElementById('startupErrors');
+        if (el) {
+          el.textContent = window._capturedErrors.slice(-25).map(e => new Date(e.ts).toLocaleTimeString() + ' — ' + e.msg).join('\n');
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    window.addEventListener('error', (ev) => {
+      const text = ev && ev.error ? (ev.error.stack || ev.error.message || ev.message) : String(ev.message || ev);
+      pushError('Error: ' + text);
+      setStartupStatus('Unhandled error — open Debug to see details', '#f87171');
+    });
+
+    window.addEventListener('unhandledrejection', (ev) => {
+      const text = ev.reason ? (ev.reason.stack || ev.reason.message || String(ev.reason)) : String(ev);
+      pushError('UnhandledRejection: ' + text);
+      setStartupStatus('Unhandled promise rejection — open Debug to see details', '#f87171');
+    });
+
+    (function wrapConsole() {
+      const orig = { error: console.error, warn: console.warn, log: console.log };
+      console.error = function(...args) { try { pushError(args.map(a=>String(a)).join(' ')); } catch(e){}; orig.error.apply(console, args); };
+      console.warn = function(...args) { try { pushError('WARN: ' + args.map(a=>String(a)).join(' ')); } catch(e){}; orig.warn.apply(console, args); };
+      console.log = function(...args) { try { /* keep logs minimal */ } catch(e){}; orig.log.apply(console, args); };
+    })();
+
 
     function getGreeting() {
       const h = new Date().getHours();
@@ -1366,6 +1404,19 @@
       renderPad(onPad);
       showNav(false);
       showAuthScreen();
+      const debugBtn = document.getElementById('showDebugBtn');
+      const errorsEl = document.getElementById('startupErrors');
+      if (debugBtn && errorsEl) {
+        debugBtn.addEventListener('click', () => {
+          if (errorsEl.style.display === 'none') {
+            errorsEl.style.display = 'block';
+            debugBtn.textContent = 'Hide Debug';
+          } else {
+            errorsEl.style.display = 'none';
+            debugBtn.textContent = 'Show Debug';
+          }
+        });
+      }
     }
 
     const splash = document.getElementById('splash');

@@ -19,6 +19,24 @@ async function getWalletInfo(name) {
       [name, walletConfig.weeklyAmount, walletConfig.dailyLimit ? 1 : 0, walletConfig.maxCount, walletConfig.rollover ? 1 : 0, walletConfig.weeklyAmount]);
     const updatedRows = await runQuery('SELECT * FROM wallets WHERE name = ?', [name]);
     walletRow = updatedRows[0];
+  } else {
+    // Sync DB if config has been updated
+    const configDailyLimit = walletConfig.dailyLimit ? 1 : 0;
+    const configRollover = walletConfig.rollover ? 1 : 0;
+    
+    if (walletRow.weekly_amount !== walletConfig.weeklyAmount || 
+        walletRow.weekly_max_count !== walletConfig.maxCount ||
+        walletRow.daily_limit !== configDailyLimit ||
+        walletRow.rollover !== configRollover) {
+      
+      const newBalance = walletConfig.weeklyAmount - (walletRow.used_this_week * (walletConfig.perAccessAmount || (walletConfig.weeklyAmount / walletConfig.maxCount)));
+      
+      await execStmt('UPDATE wallets SET weekly_amount = ?, daily_limit = ?, weekly_max_count = ?, rollover = ?, balance = ? WHERE name = ?', 
+        [walletConfig.weeklyAmount, configDailyLimit, walletConfig.maxCount, configRollover, newBalance, name]);
+      
+      const updatedRows = await runQuery('SELECT * FROM wallets WHERE name = ?', [name]);
+      walletRow = updatedRows[0];
+    }
   }
   return { walletConfig, walletRow };
 }

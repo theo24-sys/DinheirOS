@@ -8,8 +8,8 @@ module.exports = {
     },
     Tokens: {
       weeklyAmount: 180,
-      maxCount: 1,
-      perAccessAmount: 180,
+      maxCount: 3,
+      perAccessAmount: 60,
       dailyLimit: 1,
       rollover: true
     },

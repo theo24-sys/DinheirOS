@@ -1517,13 +1517,14 @@
       const fpBtn = document.getElementById('fpBtn');
       const setupBtn = document.getElementById('passkeySetupBtn');
       const settingsBtn = document.getElementById('settingsPasskeyBtn');
+      const fpLabel = fpBtn ? fpBtn.querySelector('.icon + span') : null;
       if (isWebAuthnSupported()) {
-        fpBtn.style.display = 'flex';
-        fpBtn.querySelector('.icon + span').textContent = isPasskeyEnabled() ? 'Use Passkey' : 'Fingerprint';
+        if (fpBtn) fpBtn.style.display = 'flex';
+        if (fpLabel) fpLabel.textContent = isPasskeyEnabled() ? 'Use Passkey' : 'Fingerprint';
         if (setupBtn) setupBtn.style.display = 'flex';
         if (settingsBtn) settingsBtn.style.display = 'block';
       } else {
-        fpBtn.style.display = 'none';
+        if (fpBtn) fpBtn.style.display = 'none';
         if (setupBtn) setupBtn.style.display = 'none';
         if (settingsBtn) settingsBtn.style.display = 'none';
         const footer = document.getElementById('authFooter');
@@ -1570,14 +1571,25 @@
         splash.style.opacity = '0';
         setTimeout(() => {
           splash.style.display = 'none';
-          initAuth();
+          initAuth().catch((err) => {
+            console.error('initAuth failed:', err);
+            renderPinLogin();
+          });
         }, 600);
       } else {
-        initAuth();
+        initAuth().catch((err) => {
+          console.error('initAuth failed:', err);
+          renderPinLogin();
+        });
       }
     }, 2000);
 
-    init();
+      init().catch((err) => {
+        console.error('init failed:', err);
+        setStartupStatus('Startup recovered after error. Showing PIN screen.', '#f87171');
+        showNav(false);
+        renderPinLogin();
+      });
     };
 
     if (document.readyState === 'loading') {

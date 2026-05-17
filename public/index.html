@@ -5,39 +5,721 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DinheirOS</title>
   <style>
-    :root{--bg:#0a0a0a;--card:#111111;--border:#222222;--accent:#00ff88;--danger:#ff4444;--text:#ffffff;--muted:#888888}
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui}
-    .app{max-width:720px;margin:24px auto;padding:16px}
-    .top{display:flex;justify-content:space-between;align-items:center}
-    .card{background:var(--card);border:1px solid var(--border);padding:12px;margin:8px 0;border-radius:8px}
-    .center{text-align:center}
-    .pin-dots{display:flex;gap:8px;justify-content:center;margin:12px}
-    .dot{width:18px;height:18px;border-radius:50%;background:#333}
-    .dot.filled{background:var(--accent)}
-    .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
-    .btn{background:#1a1a1a;color:#fff;padding:18px;border-radius:8px;border:0;font-size:18px}
-    .muted{color:var(--muted);font-size:14px}
-    .wallets{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-    .access-log{margin-top:16px}
-    .entry.ok{color:var(--accent)}
-    .entry.bad{color:var(--danger)}
-    .fingerprint{margin-top:8px;display:flex;justify-content:center}
+    :root {
+      --bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      --card: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.15);
+      --accent: #e94560;
+      --accent2: #0f3460;
+      --success: #00d4aa;
+      --warning: #ffa500;
+      --danger: #ff4444;
+      --text: #ffffff;
+      --muted: rgba(255,255,255,0.6);
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+      --radius: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      min-height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at top left, rgba(233,69,96,0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(0,212,170,0.14), transparent 24%),
+        radial-gradient(circle at bottom center, rgba(255,255,255,0.08), transparent 30%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: min(1200px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .screen-wrap {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .glass {
+      background: var(--card);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+    }
+
+    .auth-shell {
+      width: min(560px, 100%);
+      padding: 28px;
+      transform-origin: center;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+
+    .auth-shell.hidden {
+      opacity: 0;
+      transform: translateY(18px) scale(0.98);
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .dashboard-shell {
+      width: 100%;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+
+    .dashboard-shell.hidden {
+      opacity: 0;
+      transform: translateY(18px) scale(0.99);
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 72px;
+      height: 72px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(233,69,96,0.95), rgba(15,52,96,0.95));
+      box-shadow: 0 16px 36px rgba(233,69,96,0.35);
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(2rem, 3vw, 2.7rem);
+      letter-spacing: 0.4px;
+      text-shadow: 0 0 20px rgba(255,255,255,0.15), 0 0 38px rgba(233,69,96,0.24);
+    }
+
+    .brand p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(0,212,170,0.55);
+      animation: pulseDot 1.6s infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes pulseDot {
+      0% { box-shadow: 0 0 0 0 rgba(0,212,170,0.55); }
+      70% { box-shadow: 0 0 0 14px rgba(0,212,170,0); }
+      100% { box-shadow: 0 0 0 0 rgba(0,212,170,0); }
+    }
+
+    .pin-dots {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin: 24px 0;
+    }
+
+    .dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .dot.filled {
+      background: var(--success);
+      box-shadow: 0 0 0 6px rgba(0,212,170,0.12);
+      animation: dotBounce 0.28s ease;
+    }
+
+    @keyframes dotBounce {
+      0% { transform: scale(0.7); }
+      60% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+
+    .pin-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .pin-btn,
+    .lock-btn,
+    .request-btn,
+    .fingerprint-btn {
+      border: 0;
+      cursor: pointer;
+      color: var(--text);
+      transition: transform 0.1s ease, box-shadow 0.25s ease, opacity 0.25s ease, background 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .pin-btn:active,
+    .lock-btn:active,
+    .request-btn:active,
+    .fingerprint-btn:active {
+      transform: scale(0.92);
+    }
+
+    .pin-btn {
+      min-height: 76px;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(16px);
+      font-size: 1.25rem;
+      font-weight: 700;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+
+    .pin-btn:hover,
+    .lock-btn:hover,
+    .request-btn:hover,
+    .fingerprint-btn:hover {
+      box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+      transform: translateY(-1px);
+    }
+
+    .pin-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .fingerprint-btn {
+      flex: 1;
+      min-height: 56px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(233,69,96,0.95), rgba(15,52,96,0.95));
+      font-weight: 700;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 1rem;
+    }
+
+    .fingerprint-btn .icon {
+      font-size: 1.2rem;
+    }
+
+    .auth-footer {
+      margin-top: 16px;
+      text-align: center;
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .hint-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      flex-wrap: wrap;
+    }
+
+    .countdown {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .error-shake {
+      animation: shake 0.38s ease;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-10px); }
+      40% { transform: translateX(10px); }
+      60% { transform: translateX(-7px); }
+      80% { transform: translateX(7px); }
+    }
+
+    .success-pulse {
+      animation: successPulse 0.45s ease;
+    }
+
+    @keyframes successPulse {
+      0% { transform: scale(1); box-shadow: var(--shadow); }
+      60% { transform: scale(1.01); box-shadow: 0 0 0 12px rgba(0,212,170,0.12), var(--shadow); }
+      100% { transform: scale(1); box-shadow: var(--shadow); }
+    }
+
+    .dashboard-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding: 18px 22px;
+    }
+
+    .dashboard-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .dashboard-brand .mini-mark {
+      width: 52px;
+      height: 52px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(233,69,96,0.95), rgba(15,52,96,0.95));
+      box-shadow: 0 10px 24px rgba(233,69,96,0.25);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      flex: 0 0 auto;
+    }
+
+    .dashboard-brand h2 {
+      margin: 0;
+      font-size: 1.35rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dashboard-brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .lock-btn {
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.08));
+      border: 1px solid rgba(255,255,255,0.16);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .layout-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .section-card {
+      padding: 20px;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .section-heading h3 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    .wallets {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .wallet-card {
+      position: relative;
+      padding: 16px;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+      animation: cardIn 0.55s ease both;
+    }
+
+    .wallet-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 26px 42px rgba(0,0,0,0.32);
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .wallet-card::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 6px;
+      background: var(--wallet-color, var(--success));
+    }
+
+    .wallet-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .wallet-name {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+
+    .wallet-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .wallet-amount {
+      margin: 10px 0 8px;
+      font-size: 1.9rem;
+      font-weight: 900;
+      color: var(--wallet-color, var(--accent));
+      letter-spacing: 0.2px;
+    }
+
+    .progress-track {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.10);
+      overflow: hidden;
+      margin: 10px 0 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--wallet-color, var(--success)), rgba(255,255,255,0.85));
+      transition: width 0.35s ease;
+    }
+
+    .wallet-details {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.94rem;
+      margin-bottom: 12px;
+    }
+
+    .lock-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(255,68,68,0.18);
+      border: 1px solid rgba(255,68,68,0.34);
+      color: #ffd2d2;
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+
+    .request-btn {
+      width: 100%;
+      min-height: 54px;
+      border-radius: 18px;
+      font-weight: 800;
+      font-size: 1rem;
+      background: linear-gradient(135deg, var(--wallet-color, var(--accent)), rgba(255,255,255,0.08));
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: 0 14px 28px rgba(0,0,0,0.18);
+    }
+
+    .request-btn[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .sidebar-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .access-log-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .access-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.11);
+      border-left: 5px solid transparent;
+    }
+
+    .access-row.approved {
+      border-left-color: var(--success);
+    }
+
+    .access-row.denied {
+      border-left-color: var(--danger);
+    }
+
+    .access-left {
+      min-width: 0;
+    }
+
+    .access-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .access-subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .access-time {
+      color: var(--muted);
+      font-size: 0.85rem;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.22);
+      border-top-color: var(--accent);
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+
+    .spinner.inline {
+      width: 18px;
+      height: 18px;
+      border-width: 2px;
+      margin: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-weight: 500;
+      transition: transform 0.3s ease;
+      z-index: 999;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+      max-width: min(92vw, 520px);
+      text-align: center;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { background: #00d4aa; color: #000; }
+    .toast.error { background: #ff4444; color: #fff; }
+    .toast.warning { background: #ffa500; color: #000; }
+
+    .loader-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 0;
+    }
+
+    .loading-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+      min-height: 42px;
+    }
+
+    .small-note {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 980px) {
+      .layout-grid {
+        grid-template-columns: 1fr;
+      }
+      .wallets {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-topbar {
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .app {
+        width: min(100% - 20px, 100%);
+        padding-top: 10px;
+      }
+      .auth-shell,
+      .section-card,
+      .dashboard-topbar {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+      .pin-grid {
+        gap: 10px;
+      }
+      .pin-btn {
+        min-height: 70px;
+        border-radius: 20px;
+      }
+      .dashboard-brand h2 {
+        font-size: 1.15rem;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="top">
-      <h1 id="title">DinheirOS</h1>
-      <button id="lockBtn" class="btn">Lock</button>
-    </div>
+    <div class="screen-wrap">
+      <div id="authShell" class="auth-shell glass">
+        <div class="brand">
+          <div class="brand-mark">💠</div>
+          <h1>DinheirOS</h1>
+          <p id="authSubtitle">Enter PIN to unlock</p>
+        </div>
 
-    <div id="screen"></div>
+        <div id="authPanel" class="panel">
+          <div class="pin-dots" id="dots"></div>
+          <div class="pin-grid" id="pad"></div>
+          <div class="pin-actions">
+            <button id="fpBtn" class="fingerprint-btn" type="button"><span class="icon">🔐</span><span>Fingerprint</span></button>
+          </div>
+          <div class="hint-row">
+            <span id="attemptInfo"></span>
+            <span id="lockInfo" class="countdown"></span>
+          </div>
+          <div id="authFooter" class="auth-footer"></div>
+        </div>
+      </div>
 
-    <div id="dashboard" style="display:none">
-      <div class="wallets" id="walletCards"></div>
-      <div class="access-log card">
-        <h3>Access Log</h3>
-        <div id="logList" class="muted">Loading...</div>
+      <div id="dashboardShell" class="dashboard-shell hidden" style="width:100%;">
+        <div class="glass dashboard-topbar">
+          <div class="dashboard-brand">
+            <div class="mini-mark">💠</div>
+            <div>
+              <h2>DinheirOS</h2>
+              <p>Local rule engine active</p>
+            </div>
+          </div>
+          <button id="lockBtn" class="lock-btn" type="button">🔒 Lock</button>
+        </div>
+
+        <div class="layout-grid">
+          <div class="section-card glass">
+            <div class="section-heading">
+              <h3>Wallets</h3>
+              <span class="small-note">Tap to request access</span>
+            </div>
+            <div id="walletCards" class="wallets"></div>
+          </div>
+
+          <div class="sidebar-stack">
+            <div class="section-card glass">
+              <div class="section-heading">
+                <h3><span class="status-dot"></span>Access Log</h3>
+                <span class="small-note">Live status</span>
+              </div>
+              <div id="logList" class="access-log-list">
+                <div class="loading-row"><div class="spinner inline"></div><span>Loading...</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -47,6 +729,54 @@
     let sessionToken = null;
     let pinTemp = null;
     let firstPinEntry = null;
+    let pinMode = 'login';
+    let lockoutTimer = null;
+
+    const walletDisplayNames = {
+      Fare: '🚍 Fare',
+      Tokens: '⚡ Tokens',
+      Data: '📡 Data',
+      Meat: '🥩 Meat',
+      Energy: '☕ Energy'
+    };
+
+    const walletColors = {
+      Fare: '#00d4aa',
+      Tokens: '#ffa500',
+      Data: '#4fc3f7',
+      Meat: '#ef5350',
+      Energy: '#ab47bc'
+    };
+
+    const walletIcons = {
+      Fare: '🚍',
+      Tokens: '⚡',
+      Data: '📡',
+      Meat: '🥩',
+      Energy: '☕'
+    };
+
+    function showToast(message, type) {
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add('show'), 10);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    function setAuthMessage(message, type = '') {
+      const footer = document.getElementById('authFooter');
+      footer.textContent = message || '';
+      footer.style.color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--muted)';
+    }
+
+    function getLockInfo() {
+      return document.getElementById('lockInfo');
+    }
 
     async function api(path, opts={}){
       opts.headers = opts.headers || {};
@@ -62,68 +792,142 @@
       return body.pinSet;
     }
 
-    function renderPinSetup(){
-      const el = document.getElementById('screen');
-      el.innerHTML = `
-        <div class="card center">
-          <h2>Set Your Access PIN</h2>
-          <p class="muted">This PIN protects all withdrawals</p>
-          <div class="pin-dots" id="dots"></div>
-          <div class="pad" id="pad"></div>
-        </div>`;
-      renderPad(onPad);
-      updateDots();
-    }
-
-    function renderPinLogin(){
-      const el = document.getElementById('screen');
-      el.innerHTML = `
-        <div class="card center">
-          <h2>Enter PIN to unlock</h2>
-          <div class="pin-dots" id="dots"></div>
-          <div class="pad" id="pad"></div>
-          <div class="fingerprint"><button id="fpBtn" class="btn">Use fingerprint</button></div>
-          <div id="attemptInfo" class="muted"></div>
-        </div>`;
-      document.getElementById('fpBtn').addEventListener('click', doWebAuthn);
-      renderPad(onPad);
-      updateDots();
-    }
-
     function renderPad(onClick){
       const pad = document.getElementById('pad');
       pad.innerHTML = '';
       const keys = [1,2,3,4,5,6,7,8,9,'←',0,'OK'];
       keys.forEach(k => {
-        const b = document.createElement('button'); b.className='btn'; b.textContent=k;
-        b.addEventListener('click',()=>onClick(k)); pad.appendChild(b);
+        const b = document.createElement('button');
+        b.className = 'pin-btn';
+        b.type = 'button';
+        b.textContent = k;
+        b.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          onClick(k);
+        }, { passive: false });
+        b.addEventListener('click', () => onClick(k));
+        pad.appendChild(b);
       });
     }
 
     function updateDots(){
-      const d = document.getElementById('dots'); d.innerHTML='';
+      const d = document.getElementById('dots');
+      d.innerHTML='';
       const len = pinTemp?pinTemp.length:0;
-      for(let i=0;i<4;i++){const dot=document.createElement('div');dot.className='dot'+(i<len?' filled':'');d.appendChild(dot)}
+      for(let i=0;i<4;i++){
+        const dot=document.createElement('div');
+        dot.className='dot'+(i<len?' filled':'');
+        d.appendChild(dot);
+      }
+    }
+
+    function setAuthMode(mode) {
+      pinMode = mode;
+      const subtitle = document.getElementById('authSubtitle');
+      if (mode === 'setup') {
+        subtitle.textContent = 'This PIN protects all withdrawals';
+      } else {
+        subtitle.textContent = 'Enter PIN to unlock';
+      }
+    }
+
+    function showAuthScreen() {
+      document.getElementById('authShell').classList.remove('hidden');
+      document.getElementById('dashboardShell').classList.add('hidden');
+      document.getElementById('dashboardShell').style.position = 'absolute';
+      document.getElementById('authShell').style.position = 'relative';
+    }
+
+    function showDashboard() {
+      const authShell = document.getElementById('authShell');
+      const dashShell = document.getElementById('dashboardShell');
+      authShell.classList.add('hidden');
+      dashShell.classList.remove('hidden');
+      dashShell.style.position = 'relative';
+      authShell.style.position = 'absolute';
+    }
+
+    function renderAuthFooter() {
+      setAuthMessage('');
+      getLockInfo().textContent = '';
+    }
+
+    function animateAuthSuccess() {
+      const authShell = document.getElementById('authShell');
+      authShell.classList.add('success-pulse');
+      setTimeout(() => authShell.classList.remove('success-pulse'), 500);
+    }
+
+    function animateAuthError() {
+      const authShell = document.getElementById('authShell');
+      authShell.classList.remove('error-shake');
+      void authShell.offsetWidth;
+      authShell.classList.add('error-shake');
+      setTimeout(() => authShell.classList.remove('error-shake'), 450);
     }
 
     async function onPad(key){
-      if (key === '←') { pinTemp = (pinTemp||'').slice(0,-1); updateDots(); return }
+      if (key === '←') {
+        pinTemp = (pinTemp||'').slice(0,-1);
+        updateDots();
+        return;
+      }
       if (key === 'OK') {
         if (!pinTemp || pinTemp.length !==4) return;
-        // If no PIN set, setup flow
         const pinSet = await checkPinStatus();
         if (!pinSet) {
-          if (!firstPinEntry) { firstPinEntry = pinTemp; pinTemp=''; renderPinSetup(); alert('Confirm PIN'); return }
-          if (firstPinEntry !== pinTemp) { firstPinEntry=null; pinTemp=''; alert('PINs do not match'); renderPinSetup(); return }
-          // setup
+          if (!firstPinEntry) {
+            firstPinEntry = pinTemp;
+            pinTemp='';
+            setAuthMode('setup');
+            updateDots();
+            setAuthMessage('Confirm PIN', 'success');
+            return;
+          }
+          if (firstPinEntry !== pinTemp) {
+            firstPinEntry = null;
+            pinTemp='';
+            setAuthMode('setup');
+            updateDots();
+            animateAuthError();
+            setAuthMessage('PINs do not match', 'error');
+            showToast('⛔ PINs do not match', 'error');
+            return;
+          }
           const r = await api('/auth/setup', { method:'POST', body: JSON.stringify({pin: firstPinEntry}) });
-          if (r.ok) { const j=await r.json(); sessionToken=j.token; showDashboard(); }
-          return
+          if (r.ok) {
+            const j=await r.json();
+            sessionToken=j.token;
+            animateAuthSuccess();
+            showToast('✅ PIN set successfully', 'success');
+            showDashboard();
+            loadWallets();
+            loadHistory();
+          } else {
+            const j = await r.json().catch(() => ({}));
+            animateAuthError();
+            setAuthMessage(j.error || 'Setup failed', 'error');
+            showToast('⛔ ' + (j.error || 'Setup failed'), 'error');
+          }
+          return;
         }
-        // login flow
+
         const r = await api('/auth/login', { method:'POST', body: JSON.stringify({pin: pinTemp}) });
-        if (r.ok){ const j=await r.json(); sessionToken=j.token; showDashboard(); } else {
-          const j=await r.json(); document.getElementById('attemptInfo').textContent=j.error||'Login failed'; pinTemp=''; updateDots();
+        if (r.ok){
+          const j=await r.json();
+          sessionToken=j.token;
+          animateAuthSuccess();
+          showToast('✅ Access granted', 'success');
+          showDashboard();
+          loadWallets();
+          loadHistory();
+        } else {
+          const j=await r.json().catch(() => ({}));
+          document.getElementById('attemptInfo').textContent=j.error||'Login failed';
+          pinTemp='';
+          updateDots();
+          animateAuthError();
+          showToast('⛔ ' + (j.error || 'Wrong PIN'), 'error');
         }
         return;
       }
@@ -133,55 +937,222 @@
     }
 
     async function doWebAuthn(){
-      if (!window.PublicKeyCredential) { alert('WebAuthn not supported'); return }
+      if (!window.PublicKeyCredential) {
+        showToast('⛔ Fingerprint not available on this device', 'warning');
+        return;
+      }
       try {
         const cred = await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32), userVerification: 'required' } });
-        // If successful, call biometric login bridge
+        if (!cred) throw new Error('No credential');
         const r = await api('/auth/login', { method:'POST', body: JSON.stringify({ biometric: true }) });
-        if (r.ok){ const j=await r.json(); sessionToken=j.token; showDashboard(); } else { alert('Biometric login failed') }
-      } catch (err) { alert('Biometric auth failed') }
+        if (r.ok) {
+          const j=await r.json();
+          sessionToken=j.token;
+          animateAuthSuccess();
+          showToast('✅ Access granted', 'success');
+          showDashboard();
+          loadWallets();
+          loadHistory();
+        } else {
+          const j = await r.json().catch(() => ({}));
+          showToast('⛔ ' + (j.error || 'Biometric login failed'), 'error');
+        }
+      } catch (err) {
+        showToast('⛔ Biometric auth failed', 'error');
+      }
     }
 
-    async function showDashboard(){
-      document.getElementById('screen').style.display='none';
-      document.getElementById('dashboard').style.display='block';
-      document.getElementById('lockBtn').style.display='inline-block';
-      loadWallets();
-      loadHistory();
+    function walletLabel(name) {
+      return walletDisplayNames[name] || name;
+    }
+
+    function walletColor(name) {
+      return walletColors[name] || '#e94560';
+    }
+
+    function walletIcon(name) {
+      return walletIcons[name] || '💳';
+    }
+
+    function walletProgressPercent(wallet) {
+      const maxCount = Number(wallet.weekly_max_count || 0);
+      const used = Number(wallet.used_this_week || 0);
+      if (!maxCount) return 0;
+      return Math.min(100, Math.max(0, (used / maxCount) * 100));
+    }
+
+    async function withdrawWallet(wallet, amount) {
+      const button = document.querySelector(`[data-wallet-btn="${wallet.name}"]`);
+      const originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = '<div class="spinner inline"></div>';
+      }
+      try {
+        const res = await api('/withdraw', {
+          method: 'POST',
+          body: JSON.stringify({ wallet: wallet.name, amount })
+        });
+        const result = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(`✅ Ksh ${amount} released — ${walletLabel(wallet.name)}`, 'success');
+          loadWallets();
+          loadHistory();
+        } else {
+          showToast(`⛔ ${result.error || 'Request denied'}`, 'error');
+        }
+      } catch (err) {
+        showToast('⛔ Network error', 'error');
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Request Access';
+        }
+      }
     }
 
     async function loadWallets(){
       const r = await api('/status');
-      if (!r.ok) return; const j = await r.json(); const cards = document.getElementById('walletCards'); cards.innerHTML='';
-      (j.wallets||[]).forEach(w=>{ const c=document.createElement('div'); c.className='card'; c.innerHTML=`<strong>${w.name}</strong><div class="muted">Balance: ${w.balance}</div>`; cards.appendChild(c); });
+      if (!r.ok) return;
+      const j = await r.json();
+      const cards = document.getElementById('walletCards');
+      cards.innerHTML='';
+      (j.wallets||[]).forEach((w, index) => {
+        const c=document.createElement('div');
+        const color = walletColor(w.name);
+        const label = walletLabel(w.name);
+        const progress = walletProgressPercent(w);
+        const amount = w.weekly_max_count ? (w.weekly_amount / w.weekly_max_count) : 0;
+        const isLocked = Number(w.locked) === 1 || Number(w.locked) === true;
+        c.className='wallet-card';
+        c.style.setProperty('--wallet-color', color);
+        c.style.animationDelay = `${index * 0.08}s`;
+        c.innerHTML = `
+          <div class="wallet-top">
+            <div>
+              <h4 class="wallet-name">${walletIcon(w.name)} ${label}</h4>
+              <div class="wallet-meta">Weekly budget wallet</div>
+            </div>
+            ${isLocked ? '<span class="lock-badge">🔒 LOCKED</span>' : ''}
+          </div>
+          <div class="wallet-amount">Ksh ${Number(w.weekly_amount || 0)}</div>
+          <div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div>
+          <div class="wallet-details">
+            <div>Used withdrawals: <strong>${Number(w.used_this_week || 0)}</strong> / ${Number(w.weekly_max_count || 0)}</div>
+            <div>Per access: <strong>Ksh ${Number(amount || 0)}</strong></div>
+          </div>
+          <button class="request-btn" type="button" data-wallet-btn="${w.name}">Request Access</button>
+        `;
+        const btn = c.querySelector('button');
+        btn.style.background = `linear-gradient(135deg, ${color}, rgba(255,255,255,0.12))`;
+        btn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          withdrawWallet(w, amount);
+        }, { passive: false });
+        btn.addEventListener('click', () => withdrawWallet(w, amount));
+        cards.appendChild(c);
+      });
+    }
+
+    function formatTimestamp(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        month: 'short',
+        day: '2-digit'
+      }).format(date);
     }
 
     async function loadHistory(){
       const r = await api('/history');
       const list = document.getElementById('logList');
-      if (!r.ok) { list.textContent='Unable to load'; return }
-      const j = await r.json(); list.innerHTML = '';
-      (j||[]).forEach(row=>{ const d=document.createElement('div'); d.className='entry '+(row.status==='denied'?'bad':'ok'); d.textContent = `${row.timestamp} — ${row.walletId || row.wallet_name} — ${row.status || row.reason || 'ok'}`; list.appendChild(d); });
+      if (!r.ok) {
+        list.innerHTML = '<div class="small-note">Unable to load history</div>';
+        return;
+      }
+      const j = await r.json();
+      list.innerHTML = '';
+      if (!j || !j.length) {
+        list.innerHTML = '<div class="small-note">No activity yet</div>';
+        return;
+      }
+      j.forEach(row => {
+        const status = String(row.status || row.type || '').toLowerCase();
+        const approved = status === 'success' || status === 'approved' || status === 'withdraw';
+        const denied = status === 'denied' || status === 'failed';
+        const accessRow = document.createElement('div');
+        accessRow.className = 'access-row ' + (denied ? 'denied' : 'approved');
+        const reason = row.note || row.reason || (approved ? 'Approved' : 'Denied');
+        accessRow.innerHTML = `
+          <div class="access-left">
+            <div class="access-label">${approved ? '✅' : '⛔'} ${row.wallet_name || row.walletId || 'Wallet'}</div>
+            <div class="access-subtitle">${reason}</div>
+          </div>
+          <div class="access-time">${formatTimestamp(row.timestamp)}</div>
+        `;
+        list.appendChild(accessRow);
+      });
     }
 
-    document.getElementById('lockBtn').addEventListener('click', async ()=>{
-      if (!sessionToken) return; await api('/lock', { method: 'POST' }); sessionToken=null; document.getElementById('dashboard').style.display='none'; document.getElementById('screen').style.display='block'; renderPinLogin();
-    });
+    async function lockApp(){
+      if (!sessionToken) return;
+      await api('/lock', { method: 'POST' });
+      sessionToken = null;
+      pinTemp = null;
+      firstPinEntry = null;
+      setAuthMode('login');
+      setAuthMessage('');
+      showAuthScreen();
+      renderPad(onPad);
+      updateDots();
+      showToast('🔒 Locked', 'warning');
+    }
 
-    // Auto-lock on visibilitychange
-    document.addEventListener('visibilitychange', async ()=>{
+    document.getElementById('lockBtn').addEventListener('click', lockApp);
+
+    document.addEventListener('visibilitychange', async () => {
       if (document.hidden && sessionToken) {
-        await api('/lock', { method: 'POST' }); sessionToken=null; document.getElementById('dashboard').style.display='none'; document.getElementById('screen').style.display='block'; renderPinLogin();
+        await lockApp();
       }
     });
 
-    // Init
-    (async ()=>{
+    async function updateAuthUIForPinState() {
       const pinSet = await checkPinStatus();
-      if (!pinSet) renderPinSetup(); else renderPinLogin();
-    })();
+      if (!pinSet) {
+        setAuthMode('setup');
+        setAuthMessage('Set your access PIN', 'success');
+      } else {
+        setAuthMode('login');
+        setAuthMessage('Enter PIN to unlock');
+      }
+      renderPad(onPad);
+      updateDots();
+    }
+
+    function updateFingerprintVisibility() {
+      const fpBtn = document.getElementById('fpBtn');
+      if (window.PublicKeyCredential) {
+        fpBtn.style.display = 'flex';
+      } else {
+        fpBtn.style.display = 'none';
+      }
+    }
+
+    async function init() {
+      updateFingerprintVisibility();
+      await updateAuthUIForPinState();
+      document.getElementById('fpBtn').addEventListener('click', doWebAuthn);
+      const pinSet = await checkPinStatus();
+      if (!pinSet) {
+        setAuthMode('setup');
+      }
+      showAuthScreen();
+    }
+
+    init();
   </script>
-</body>
-</html>
 </body>
 </html>

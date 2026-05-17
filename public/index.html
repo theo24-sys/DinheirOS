@@ -1427,6 +1427,11 @@
       }
     }
 
+    window.showTab = showTab;
+    window.lockApp = lockApp;
+    window.requestAccess = requestAccess;
+    window.showToast = showToast;
+
     async function lockApp() {
       await api('/auth/lock', { method: 'POST' });
       clearToken();
@@ -1532,6 +1537,10 @@
       const passkeySetupBtn = document.getElementById('passkeySetupBtn');
       const settingsPasskeyBtn = document.getElementById('settingsPasskeyBtn');
       const biometricLockToggle = document.getElementById('biometricLockToggle');
+      const navHome = document.getElementById('nav-home');
+      const navWallets = document.getElementById('nav-wallets');
+      const navHistory = document.getElementById('nav-history');
+      const navSettings = document.getElementById('nav-settings');
       if (fpBtn) fpBtn.addEventListener('click', doFingerprint);
       if (passkeySetupBtn) passkeySetupBtn.addEventListener('click', setupPasskey);
       if (settingsPasskeyBtn) settingsPasskeyBtn.addEventListener('click', setupPasskey);
@@ -1542,6 +1551,10 @@
           showToast(biometricLockToggle.checked ? 'Biometric lock enabled' : 'Biometric lock disabled', biometricLockToggle.checked ? 'success' : 'warning');
         });
       }
+      if (navHome) navHome.addEventListener('click', () => showTab('home'));
+      if (navWallets) navWallets.addEventListener('click', () => showTab('wallets'));
+      if (navHistory) navHistory.addEventListener('click', () => showTab('history'));
+      if (navSettings) navSettings.addEventListener('click', () => showTab('settings'));
       updateDots();
       renderPad(onPad);
       showNav(false);

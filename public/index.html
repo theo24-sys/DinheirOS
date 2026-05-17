@@ -1263,23 +1263,41 @@
     });
 
     async function initAuth() {
-      const savedToken = sessionStorage.getItem('st');
-      if (savedToken) {
-        sessionToken = savedToken;
-        const r = await api('/auth/status');
-        if (r.ok) {
-          showNav(true);
-          showDashboard();
+      try {
+        // Test connection first
+        const ping = await fetch('/health').catch(() => null);
+        if (!ping || !ping.ok) {
+          const splash = document.getElementById('splash');
+          if (splash) {
+            splash.innerHTML += '<p style="color:#ef4444;margin-top:16px;font-size:12px;">Cannot reach server — make sure Termux is running</p>';
+          }
           return;
-        } else {
+        }
+
+        const savedToken = sessionStorage.getItem('st');
+        if (savedToken) {
+          sessionToken = savedToken;
+          try {
+            const r = await api('/auth/status');
+            if (r.ok) {
+              showNav(true);
+              await showDashboard();
+              return;
+            }
+          } catch (e) {}
           sessionToken = null;
           sessionStorage.removeItem('st');
         }
+
+        const pinSet = await checkPinStatus();
+        showNav(false);
+        if (!pinSet) renderPinSetup();
+        else renderPinLogin();
+      } catch (err) {
+        console.error('initAuth error:', err);
+        showNav(false);
+        renderPinLogin();
       }
-      const pinSet = await checkPinStatus();
-      showNav(false);
-      if (!pinSet) renderPinSetup();
-      else renderPinLogin();
     }
 
     function renderPinSetup() { setAuthMode('setup'); showAuthScreen(); renderPad(onPad); updateDots(); setAuthMessage('Set your access PIN', 'success'); }
@@ -1315,40 +1333,20 @@
       showAuthScreen();
     }
 
-    function hideSplash() {
+    window.addEventListener('load', () => {
       const splash = document.getElementById('splash');
-      if (!splash) return;
-      splash.style.opacity = '0';
+      // Force transition after 2.5 seconds no matter what
       setTimeout(() => {
-        splash.style.display = 'none';
-      }, 300);
-    }
+        splash.style.transition = 'opacity 0.5s ease';
+        splash.style.opacity = '0';
+        setTimeout(() => {
+          splash.style.display = 'none';
+          initAuth();
+        }, 500);
+      }, 2500);
+    });
 
-    async function bootApp() {
-      try {
-        init();
-      } catch (err) {
-        console.error('Init error:', err);
-      }
-
-      setTimeout(hideSplash, 600);
-
-      try {
-        await initAuth();
-      } catch (err) {
-        console.error('Startup auth error:', err);
-        showNav(false);
-        renderPinLogin();
-      } finally {
-        hideSplash();
-      }
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', bootApp, { once: true });
-    } else {
-      bootApp();
-    }
+    init();
   </script>
 </body>
 </html>

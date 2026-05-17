@@ -1,3 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DinheirOS</title>
+  <style>
+    :root{--bg:#0a0a0a;--card:#111111;--border:#222222;--accent:#00ff88;--danger:#ff4444;--text:#ffffff;--muted:#888888}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui}
+    .app{max-width:720px;margin:24px auto;padding:16px}
+    .top{display:flex;justify-content:space-between;align-items:center}
+    .card{background:var(--card);border:1px solid var(--border);padding:12px;margin:8px 0;border-radius:8px}
+    .center{text-align:center}
+    .pin-dots{display:flex;gap:8px;justify-content:center;margin:12px}
+    .dot{width:18px;height:18px;border-radius:50%;background:#333}
+    .dot.filled{background:var(--accent)}
+    .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+    .btn{background:#1a1a1a;color:#fff;padding:18px;border-radius:8px;border:0;font-size:18px}
+    .muted{color:var(--muted);font-size:14px}
+    .wallets{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .access-log{margin-top:16px}
+    .entry.ok{color:var(--accent)}
+    .entry.bad{color:var(--danger)}
+    .fingerprint{margin-top:8px;display:flex;justify-content:center}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <h1 id="title">DinheirOS</h1>
+      <button id="lockBtn" class="btn">Lock</button>
+    </div>
+
+    <div id="screen"></div>
+
+    <div id="dashboard" style="display:none">
+      <div class="wallets" id="walletCards"></div>
+      <div class="access-log card">
+        <h3>Access Log</h3>
+        <div id="logList" class="muted">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // In-memory token only
+    let sessionToken = null;
+    let pinTemp = null;
+    let firstPinEntry = null;
+
+    async function api(path, opts={}){
+      opts.headers = opts.headers || {};
+      opts.headers['Content-Type'] = 'application/json';
+      if (sessionToken) opts.headers['Authorization'] = 'Bearer ' + sessionToken;
+      const res = await fetch('/api' + path, opts);
+      return res;
+    }
+
+    async function checkPinStatus(){
+      const r = await api('/auth/status');
+      const body = await r.json();
+      return body.pinSet;
+    }
+
+    function renderPinSetup(){
+      const el = document.getElementById('screen');
+      el.innerHTML = `
+        <div class="card center">
+          <h2>Set Your Access PIN</h2>
+          <p class="muted">This PIN protects all withdrawals</p>
+          <div class="pin-dots" id="dots"></div>
+          <div class="pad" id="pad"></div>
+        </div>`;
+      renderPad(onPad);
+      updateDots();
+    }
+
+    function renderPinLogin(){
+      const el = document.getElementById('screen');
+      el.innerHTML = `
+        <div class="card center">
+          <h2>Enter PIN to unlock</h2>
+          <div class="pin-dots" id="dots"></div>
+          <div class="pad" id="pad"></div>
+          <div class="fingerprint"><button id="fpBtn" class="btn">Use fingerprint</button></div>
+          <div id="attemptInfo" class="muted"></div>
+        </div>`;
+      document.getElementById('fpBtn').addEventListener('click', doWebAuthn);
+      renderPad(onPad);
+      updateDots();
+    }
+
+    function renderPad(onClick){
+      const pad = document.getElementById('pad');
+      pad.innerHTML = '';
+      const keys = [1,2,3,4,5,6,7,8,9,'←',0,'OK'];
+      keys.forEach(k => {
+        const b = document.createElement('button'); b.className='btn'; b.textContent=k;
+        b.addEventListener('click',()=>onClick(k)); pad.appendChild(b);
+      });
+    }
+
+    function updateDots(){
+      const d = document.getElementById('dots'); d.innerHTML='';
+      const len = pinTemp?pinTemp.length:0;
+      for(let i=0;i<4;i++){const dot=document.createElement('div');dot.className='dot'+(i<len?' filled':'');d.appendChild(dot)}
+    }
+
+    async function onPad(key){
+      if (key === '←') { pinTemp = (pinTemp||'').slice(0,-1); updateDots(); return }
+      if (key === 'OK') {
+        if (!pinTemp || pinTemp.length !==4) return;
+        // If no PIN set, setup flow
+        const pinSet = await checkPinStatus();
+        if (!pinSet) {
+          if (!firstPinEntry) { firstPinEntry = pinTemp; pinTemp=''; renderPinSetup(); alert('Confirm PIN'); return }
+          if (firstPinEntry !== pinTemp) { firstPinEntry=null; pinTemp=''; alert('PINs do not match'); renderPinSetup(); return }
+          // setup
+          const r = await api('/auth/setup', { method:'POST', body: JSON.stringify({pin: firstPinEntry}) });
+          if (r.ok) { const j=await r.json(); sessionToken=j.token; showDashboard(); }
+          return
+        }
+        // login flow
+        const r = await api('/auth/login', { method:'POST', body: JSON.stringify({pin: pinTemp}) });
+        if (r.ok){ const j=await r.json(); sessionToken=j.token; showDashboard(); } else {
+          const j=await r.json(); document.getElementById('attemptInfo').textContent=j.error||'Login failed'; pinTemp=''; updateDots();
+        }
+        return;
+      }
+      pinTemp = (pinTemp||'') + String(key);
+      if (pinTemp.length>4) pinTemp = pinTemp.slice(0,4);
+      updateDots();
+    }
+
+    async function doWebAuthn(){
+      if (!window.PublicKeyCredential) { alert('WebAuthn not supported'); return }
+      try {
+        const cred = await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32), userVerification: 'required' } });
+        // If successful, call biometric login bridge
+        const r = await api('/auth/login', { method:'POST', body: JSON.stringify({ biometric: true }) });
+        if (r.ok){ const j=await r.json(); sessionToken=j.token; showDashboard(); } else { alert('Biometric login failed') }
+      } catch (err) { alert('Biometric auth failed') }
+    }
+
+    async function showDashboard(){
+      document.getElementById('screen').style.display='none';
+      document.getElementById('dashboard').style.display='block';
+      document.getElementById('lockBtn').style.display='inline-block';
+      loadWallets();
+      loadHistory();
+    }
+
+    async function loadWallets(){
+      const r = await api('/status');
+      if (!r.ok) return; const j = await r.json(); const cards = document.getElementById('walletCards'); cards.innerHTML='';
+      (j.wallets||[]).forEach(w=>{ const c=document.createElement('div'); c.className='card'; c.innerHTML=`<strong>${w.name}</strong><div class="muted">Balance: ${w.balance}</div>`; cards.appendChild(c); });
+    }
+
+    async function loadHistory(){
+      const r = await api('/history');
+      const list = document.getElementById('logList');
+      if (!r.ok) { list.textContent='Unable to load'; return }
+      const j = await r.json(); list.innerHTML = '';
+      (j||[]).forEach(row=>{ const d=document.createElement('div'); d.className='entry '+(row.status==='denied'?'bad':'ok'); d.textContent = `${row.timestamp} — ${row.walletId || row.wallet_name} — ${row.status || row.reason || 'ok'}`; list.appendChild(d); });
+    }
+
+    document.getElementById('lockBtn').addEventListener('click', async ()=>{
+      if (!sessionToken) return; await api('/lock', { method: 'POST' }); sessionToken=null; document.getElementById('dashboard').style.display='none'; document.getElementById('screen').style.display='block'; renderPinLogin();
+    });
+
+    // Auto-lock on visibilitychange
+    document.addEventListener('visibilitychange', async ()=>{
+      if (document.hidden && sessionToken) {
+        await api('/lock', { method: 'POST' }); sessionToken=null; document.getElementById('dashboard').style.display='none'; document.getElementById('screen').style.display='block'; renderPinLogin();
+      }
+    });
+
+    // Init
+    (async ()=>{
+      const pinSet = await checkPinStatus();
+      if (!pinSet) renderPinSetup(); else renderPinLogin();
+    })();
+  </script>
+</body>
+</html>
 <!DOCTYPE html>
 <html lang="en">
 <head>

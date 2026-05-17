@@ -53,6 +53,26 @@ async function getDb() {
     );
   `);
 
+  // Auth-related tables
+  db.run(`CREATE TABLE IF NOT EXISTS pin (
+    id INTEGER PRIMARY KEY,
+    hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY,
+    token TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_active DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS pin_attempts (
+    id INTEGER PRIMARY KEY,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    success INTEGER DEFAULT 0
+  )`);
+
   saveDb();
 
   return db;

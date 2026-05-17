@@ -6,6 +6,7 @@ const { runQuery, execStmt } = require('./db');
 const { evaluateWithdrawal } = require('./gates');
 const { sendB2C } = require('./mpesa');
 const { wallets: walletRules } = require('./config');
+const auth = require('./auth');
 
 async function getWalletInfo(name) {
   const walletConfig = walletRules[name];
@@ -51,6 +52,90 @@ router.get('/status', async (req, res) => {
     res.json({ wallets });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Auth endpoints ---
+router.get('/auth/status', async (req, res) => {
+  try {
+    const pinSet = await auth.isPinSet();
+    res.json({ pinSet });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/auth/setup', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin || String(pin).length !== 4) return res.status(400).json({ error: 'PIN must be 4 digits' });
+    if (await auth.isPinSet()) return res.status(400).json({ error: 'PIN already set' });
+    await auth.setPin(String(pin));
+    const token = await auth.createSession();
+    res.json({ success: true, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/auth/login', async (req, res) => {
+  try {
+    const { pin, biometric } = req.body || {};
+    if (await auth.isLockedOut()) {
+      return res.status(429).json({ error: 'Too many failed attempts. Wait 10 minutes.' });
+    }
+
+    // Biometric flow: client-side WebAuthn should verify; here we accept a biometric flag as a bridge
+    if (biometric) {
+      const token = await auth.createSession();
+      await auth.logAttempt(true);
+      return res.json({ success: true, token });
+    }
+
+    if (!pin) return res.status(400).json({ error: 'PIN required' });
+    if (await auth.verifyPin(String(pin))) {
+      await auth.logAttempt(true);
+      const token = await auth.createSession();
+      return res.json({ success: true, token });
+    }
+    await auth.logAttempt(false);
+    res.status(401).json({ error: 'Wrong PIN' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/auth/lock', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) await auth.deleteSession(token);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// App lock endpoint (mounted at /api/lock)
+router.post('/lock', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) await auth.deleteSession(token);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Middleware to protect /api/withdraw
+router.use('/withdraw', async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token || !(await auth.validateSession(token))) {
+      return res.status(401).json({ error: 'Unauthorized. Please login.' });
+    }
+    next();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

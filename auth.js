@@ -41,7 +41,7 @@ async function createSession() {
 }
 
 async function validateSession(token) {
-  const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const rows = await runQuery('SELECT id FROM sessions WHERE token = ? AND last_active > ?', [token, cutoff]);
   if (rows.length > 0) {
     await execStmt('UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = ?', [token]);

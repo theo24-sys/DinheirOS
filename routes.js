@@ -58,6 +58,10 @@ router.get('/status', async (req, res) => {
 // --- Auth endpoints ---
 router.get('/auth/status', async (req, res) => {
   try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token && !(await auth.validateSession(token))) {
+      return res.status(401).json({ error: 'Unauthorized. Please login.' });
+    }
     const pinSet = await auth.isPinSet();
     res.json({ pinSet });
   } catch (err) {

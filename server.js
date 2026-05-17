@@ -48,7 +48,7 @@ initDatabase();
 })();
 
 // Session expiry: remove sessions inactive for more than 5 minutes
-const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 setInterval(async () => {
   const cutoff = Date.now() - SESSION_TIMEOUT_MS;
   try {

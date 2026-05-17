@@ -726,11 +726,12 @@
 
   <script>
     // In-memory token only
-    let sessionToken = null;
+    let sessionToken = sessionStorage.getItem('st') || null;
     let pinTemp = null;
     let firstPinEntry = null;
     let pinMode = 'login';
     let lockoutTimer = null;
+    let pinSubmitting = false;
 
     const walletDisplayNames = {
       Fare: '🚍 Fare',
@@ -778,11 +779,21 @@
       return document.getElementById('lockInfo');
     }
 
-    async function api(path, opts={}){
+    async function api(path, opts={}) {
       opts.headers = opts.headers || {};
       opts.headers['Content-Type'] = 'application/json';
-      if (sessionToken) opts.headers['Authorization'] = 'Bearer ' + sessionToken;
+      const token = sessionToken || sessionStorage.getItem('st');
+      if (token) opts.headers['Authorization'] = 'Bearer ' + token;
       const res = await fetch('/api' + path, opts);
+      if (res.status === 401) {
+        sessionToken = null;
+        sessionStorage.removeItem('st');
+        showAuthScreen();
+        setAuthMode('login');
+        renderPad(onPad);
+        updateDots();
+        return res;
+      }
       return res;
     }
 
@@ -795,7 +806,7 @@
     function renderPad(onClick){
       const pad = document.getElementById('pad');
       pad.innerHTML = '';
-      const keys = [1,2,3,4,5,6,7,8,9,'←',0,'OK'];
+      const keys = [1,2,3,4,5,6,7,8,9,'←',0];
       keys.forEach(k => {
         const b = document.createElement('button');
         b.className = 'pin-btn';
@@ -866,19 +877,15 @@
       setTimeout(() => authShell.classList.remove('error-shake'), 450);
     }
 
-    async function onPad(key){
-      if (key === '←') {
-        pinTemp = (pinTemp||'').slice(0,-1);
-        updateDots();
-        return;
-      }
-      if (key === 'OK') {
-        if (!pinTemp || pinTemp.length !==4) return;
+    async function submitPin() {
+      if (pinSubmitting || !pinTemp || pinTemp.length !== 4) return;
+      pinSubmitting = true;
+      try {
         const pinSet = await checkPinStatus();
         if (!pinSet) {
           if (!firstPinEntry) {
             firstPinEntry = pinTemp;
-            pinTemp='';
+            pinTemp = '';
             setAuthMode('setup');
             updateDots();
             setAuthMessage('Confirm PIN', 'success');
@@ -886,7 +893,7 @@
           }
           if (firstPinEntry !== pinTemp) {
             firstPinEntry = null;
-            pinTemp='';
+            pinTemp = '';
             setAuthMode('setup');
             updateDots();
             animateAuthError();
@@ -896,8 +903,9 @@
           }
           const r = await api('/auth/setup', { method:'POST', body: JSON.stringify({pin: firstPinEntry}) });
           if (r.ok) {
-            const j=await r.json();
-            sessionToken=j.token;
+            const j = await r.json();
+            sessionToken = j.token;
+            sessionStorage.setItem('st', sessionToken);
             animateAuthSuccess();
             showToast('✅ PIN set successfully', 'success');
             showDashboard();
@@ -913,27 +921,39 @@
         }
 
         const r = await api('/auth/login', { method:'POST', body: JSON.stringify({pin: pinTemp}) });
-        if (r.ok){
-          const j=await r.json();
-          sessionToken=j.token;
+        if (r.ok) {
+          const j = await r.json();
+          sessionToken = j.token;
+          sessionStorage.setItem('st', sessionToken);
           animateAuthSuccess();
           showToast('✅ Access granted', 'success');
           showDashboard();
           loadWallets();
           loadHistory();
         } else {
-          const j=await r.json().catch(() => ({}));
-          document.getElementById('attemptInfo').textContent=j.error||'Login failed';
-          pinTemp='';
+          const j = await r.json().catch(() => ({}));
+          document.getElementById('attemptInfo').textContent = j.error || 'Login failed';
+          pinTemp = '';
           updateDots();
           animateAuthError();
           showToast('⛔ ' + (j.error || 'Wrong PIN'), 'error');
         }
+      } finally {
+        pinSubmitting = false;
+      }
+    }
+
+    async function onPad(key){
+      if (key === '←') {
+        pinTemp = (pinTemp||'').slice(0,-1);
+        updateDots();
         return;
       }
       pinTemp = (pinTemp||'') + String(key);
-      if (pinTemp.length>4) pinTemp = pinTemp.slice(0,4);
       updateDots();
+      if (pinTemp.length === 4) {
+        await submitPin();
+      }
     }
 
     async function doWebAuthn(){
@@ -948,6 +968,7 @@
         if (r.ok) {
           const j=await r.json();
           sessionToken=j.token;
+          sessionStorage.setItem('st', sessionToken);
           animateAuthSuccess();
           showToast('✅ Access granted', 'success');
           showDashboard();
@@ -1101,6 +1122,7 @@
       if (!sessionToken) return;
       await api('/lock', { method: 'POST' });
       sessionToken = null;
+      sessionStorage.removeItem('st');
       pinTemp = null;
       firstPinEntry = null;
       setAuthMode('login');
@@ -1143,12 +1165,24 @@
 
     async function init() {
       updateFingerprintVisibility();
-      await updateAuthUIForPinState();
       document.getElementById('fpBtn').addEventListener('click', doWebAuthn);
-      const pinSet = await checkPinStatus();
-      if (!pinSet) {
-        setAuthMode('setup');
+      const savedToken = sessionStorage.getItem('st');
+      if (savedToken) {
+        sessionToken = savedToken;
+        const r = await api('/auth/status');
+        if (r.ok) {
+          showDashboard();
+          loadWallets();
+          loadHistory();
+          return;
+        } else {
+          sessionToken = null;
+          sessionStorage.removeItem('st');
+        }
       }
+      const pinSet = await checkPinStatus();
+      if (!pinSet) renderPinSetup();
+      else renderPinLogin();
       showAuthScreen();
     }
 

@@ -8,8 +8,7 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
+    "sql.js": "^1.12.0",
     "node-cron": "^3.0.3",
     "axios": "^1.6.7",
     "dotenv": "^16.4.4"

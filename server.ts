@@ -96,6 +96,128 @@ function verifySession(token: string): boolean {
   return true;
 }
 
+// ============ VALIDATION (FIRESTORE RULES EQUIVALENT) ============
+
+interface ValidationError {
+  valid: false;
+  errors: string[];
+}
+
+interface ValidationSuccess {
+  valid: true;
+}
+
+type ValidationResult = ValidationSuccess | ValidationError;
+
+function validateId(id: string): string[] {
+  const errors: string[] = [];
+  if (typeof id !== 'string') errors.push('id must be a string');
+  if (id.length === 0 || id.length > 128) errors.push('id must be 1-128 characters');
+  if (!/^[a-zA-Z0-9_\-]+$/.test(id)) errors.push('id must contain only alphanumeric, underscore, or hyphen');
+  return errors;
+}
+
+function validateWalletData(data: any): ValidationResult {
+  const errors: string[] = [];
+
+  // Required fields
+  const requiredFields = ['id', 'name', 'allocation', 'maxFrequency', 'usedFrequency', 'locked', 'perWithdrawalAmount'];
+  for (const field of requiredFields) {
+    if (!(field in data)) {
+      errors.push(`Required field missing: ${field}`);
+    }
+  }
+
+  // Type validation
+  if (typeof data.id !== 'string') errors.push('id must be a string');
+  if (typeof data.name !== 'string') errors.push('name must be a string');
+  if (typeof data.allocation !== 'number') errors.push('allocation must be a number');
+  if (typeof data.maxFrequency !== 'number') errors.push('maxFrequency must be a number');
+  if (typeof data.usedFrequency !== 'number') errors.push('usedFrequency must be a number');
+  if (typeof data.locked !== 'boolean') errors.push('locked must be a boolean');
+  if (typeof data.perWithdrawalAmount !== 'number') errors.push('perWithdrawalAmount must be a number');
+
+  // Size limits
+  if (data.id && data.id.length > 64) errors.push('id max length is 64 characters');
+  if (data.name && data.name.length > 64) errors.push('name max length is 64 characters');
+
+  // Value validation
+  if (typeof data.allocation === 'number' && data.allocation < 0) errors.push('allocation cannot be negative');
+  if (typeof data.maxFrequency === 'number' && data.maxFrequency <= 0) errors.push('maxFrequency must be greater than 0');
+  if (typeof data.usedFrequency === 'number' && data.usedFrequency < 0) errors.push('usedFrequency cannot be negative');
+  if (typeof data.perWithdrawalAmount === 'number' && data.perWithdrawalAmount <= 0) errors.push('perWithdrawalAmount must be greater than 0');
+
+  // Rollover bonus cap (0 or 1)
+  if ('rolloverBonus' in data) {
+    if (typeof data.rolloverBonus !== 'number') errors.push('rolloverBonus must be a number');
+    if (data.rolloverBonus !== 0 && data.rolloverBonus !== 1) errors.push('rolloverBonus must be 0 or 1 (capped at 1)');
+  }
+
+  // Frequency invariant: usedFrequency cannot exceed maxFrequency + rolloverBonus
+  const rolloverBonus = data.rolloverBonus || 0;
+  if (typeof data.usedFrequency === 'number' && typeof data.maxFrequency === 'number') {
+    if (data.usedFrequency > data.maxFrequency + rolloverBonus) {
+      errors.push(`usedFrequency (${data.usedFrequency}) cannot exceed maxFrequency (${data.maxFrequency}) + rolloverBonus (${rolloverBonus})`);
+    }
+  }
+
+  // ID validation
+  const idErrors = validateId(data.id);
+  errors.push(...idErrors);
+
+  return errors.length > 0 ? { valid: false, errors } : { valid: true };
+}
+
+function validateTransactionData(data: any): ValidationResult {
+  const errors: string[] = [];
+
+  // Required fields
+  const requiredFields = ['walletId', 'amount', 'timestamp', 'status'];
+  for (const field of requiredFields) {
+    if (!(field in data)) {
+      errors.push(`Required field missing: ${field}`);
+    }
+  }
+
+  // Type validation
+  if (typeof data.walletId !== 'string') errors.push('walletId must be a string');
+  if (typeof data.amount !== 'number') errors.push('amount must be a number');
+  if (typeof data.timestamp !== 'string') errors.push('timestamp must be a string');
+  if (typeof data.status !== 'string') errors.push('status must be a string');
+
+  // Value validation
+  if (typeof data.amount === 'number' && data.amount <= 0) errors.push('amount must be greater than 0');
+  if (typeof data.status === 'string' && !['success', 'denied', 'pending'].includes(data.status)) {
+    errors.push("status must be one of: 'success', 'denied', 'pending'");
+  }
+
+  return errors.length > 0 ? { valid: false, errors } : { valid: true };
+}
+
+// Middleware: Validate wallet update/create payload
+function validateWalletPayload(req: any, res: any, next: any) {
+  const validation = validateWalletData(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ 
+      message: 'Validation failed', 
+      errors: validation.errors 
+    });
+  }
+  next();
+}
+
+// Middleware: Validate transaction payload
+function validateTransactionPayload(req: any, res: any, next: any) {
+  const validation = validateTransactionData(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ 
+      message: 'Validation failed', 
+      errors: validation.errors 
+    });
+  }
+  next();
+}
+
 // ============ DATABASE SETUP ============
 let SQL: any;
 let db: any;
@@ -279,6 +401,23 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
+// DEFENSE: Block attempts to modify transactions (immutability)
+app.post('/api/transactions/:id', (req, res) => {
+  res.status(405).json({ message: 'Transactions are immutable ledger entries' });
+});
+
+app.put('/api/transactions/:id', (req, res) => {
+  res.status(405).json({ message: 'Transactions are immutable ledger entries' });
+});
+
+app.patch('/api/transactions/:id', (req, res) => {
+  res.status(405).json({ message: 'Transactions are immutable ledger entries' });
+});
+
+app.delete('/api/transactions/:id', (req, res) => {
+  res.status(405).json({ message: 'Transactions are immutable ledger entries' });
+});
+
 // POST: Withdraw
 app.post('/api/withdraw', async (req, res) => {
   const { walletId } = req.body;
@@ -286,16 +425,29 @@ app.post('/api/withdraw', async (req, res) => {
     return res.status(400).json({ message: 'walletId required' });
   }
 
+  // ATTACK: Identity/Wallet Validation
+  if (typeof walletId !== 'string' || walletId.length === 0 || walletId.length > 128) {
+    return res.status(400).json({ message: 'Invalid walletId' });
+  }
+
   try {
     // Get wallet
     const stmt = db.prepare('SELECT * FROM wallets WHERE id = ?');
     stmt.bind([walletId]);
     if (!stmt.step()) {
+      // ATTACK: Orphaned Transaction - prevent creating transactions for non-existent wallets
       return res.status(404).json({ message: 'Wallet not found' });
     }
 
     const walletData = stmt.getAsObject();
     stmt.free();
+
+    // DEFENSE: Validate wallet state before processing
+    const validation = validateWalletData(walletData);
+    if (!validation.valid) {
+      console.error('Wallet state violation detected:', validation.errors);
+      return res.status(500).json({ message: 'Wallet state corruption detected', errors: validation.errors });
+    }
 
     // Reconstruct wallet object for evaluation
     const wallet = {
@@ -309,6 +461,28 @@ app.post('/api/withdraw', async (req, res) => {
       locked: walletData.locked === 1,
       rolloverBonus: walletData.rolloverBonus
     };
+
+    // ATTACK: Frequency Hijack / Zero-Frequency Access / Negative Cost
+    if (wallet.usedFrequency >= wallet.maxFrequency + wallet.rolloverBonus) {
+      const decision = 'FREQUENCY_EXHAUSTED';
+      const txId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      db.run(
+        `INSERT INTO transactions (id, walletId, amount, timestamp, status, reason)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [txId, walletId, wallet.perWithdrawalAmount, new Date().toISOString(), 'denied', decision]
+      );
+      await saveDatabase();
+      return res.status(403).json({
+        decision,
+        message: 'Maximum frequency reached'
+      });
+    }
+
+    // ATTACK: Negative Cost / Balance Injection - prevent negative withdrawal amounts
+    if (wallet.perWithdrawalAmount <= 0) {
+      console.error('Negative withdrawal amount detected');
+      return res.status(500).json({ message: 'Invalid withdrawal amount' });
+    }
 
     // Evaluate gates
     const decision = evaluateGates(wallet);
@@ -348,10 +522,20 @@ app.post('/api/withdraw', async (req, res) => {
       return res.status(500).json({ message: 'Payment processing failed' });
     }
 
+    // DEFENSE: Validate before update
+    const expectedNewFrequency = wallet.usedFrequency + 1;
+    if (expectedNewFrequency > wallet.maxFrequency + wallet.rolloverBonus) {
+      throw new Error('Frequency invariant violation detected');
+    }
+
+    // ATTACK: System Field Update - ensure updatedAt is current timestamp
+    const now = new Date().toISOString();
+    
     // Update wallet: increment frequency and set last withdrawal date
+    // DEFENSE: Only update the allowed fields
     db.run(
-      `UPDATE wallets SET usedFrequency = usedFrequency + 1, lastWithdrawalDate = ?, updatedAt = ? WHERE id = ?`,
-      [new Date().toISOString(), new Date().toISOString(), walletId]
+      `UPDATE wallets SET usedFrequency = ?, lastWithdrawalDate = ?, updatedAt = ? WHERE id = ?`,
+      [expectedNewFrequency, now, now, walletId]
     );
 
     // Record successful transaction
@@ -359,7 +543,7 @@ app.post('/api/withdraw', async (req, res) => {
     db.run(
       `INSERT INTO transactions (id, walletId, amount, timestamp, status, darajaConversationId)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [darajaId, walletId, wallet.perWithdrawalAmount, new Date().toISOString(), 'success', paymentResponse.ConversationID]
+      [darajaId, walletId, wallet.perWithdrawalAmount, now, 'success', paymentResponse.ConversationID]
     );
 
     await saveDatabase();
@@ -444,14 +628,26 @@ async function startServer() {
 
     app.listen(PORT, '127.0.0.1', () => {
       console.log(`
-╔════════════════════════════════════════╗
-║     FinanceOS - Local Server Ready     ║
-╠════════════════════════════════════════╣
+╔════════════════════════════════════════════════════════════════╗
+║          DinheirOS - Local Server Ready (v1.0.7)               ║
+╠════════════════════════════════════════════════════════════════╣
 ║ URL: http://127.0.0.1:${PORT}
 ║ Database: ${DB_PATH}
 ║ Mode: Local PIN Authentication
-║ Rules: ENFORCED SERVER-SIDE
-╚════════════════════════════════════════╝
+║
+║ SECURITY MEASURES ENFORCED:
+║ ✓ Input validation (types, sizes, ranges)
+║ ✓ Frequency invariant enforcement
+║ ✓ Transaction immutability (no updates/deletes)
+║ ✓ Rollover bonus capping (0 or 1)
+║ ✓ Wallet state validation before operations
+║ ✓ Protection against: Frequency Hijack, Rollover Poisoning,
+║   Balance Injection, Negative Amounts, Orphaned Transactions,
+║   Invalid IDs, State Corruption, System Field Tampering
+║
+║ WEEKLY RESET: Every Monday at 00:00 UTC
+║ WITHDRAWAL LIMITS: Per-wallet configuration enforced
+╚════════════════════════════════════════════════════════════════╝
       `);
     });
   } catch (error) {

@@ -7,9 +7,9 @@ module.exports = {
       rollover: true
     },
     Tokens: {
-      weeklyAmount: 180,
+      weeklyAmount: 150,
       maxCount: 1,
-      perAccessAmount: 180,
+      perAccessAmount: 50,
       rollover: true
     },
     Data: {
@@ -19,8 +19,8 @@ module.exports = {
       rollover: true
     },
     Meat: {
-      weeklyAmount: 300,
-      maxCount: 2,
+      weeklyAmount: 450,
+      maxCount: 3,
       perAccessAmount: 150,
       rollover: true
     },

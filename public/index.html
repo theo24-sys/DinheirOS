@@ -944,7 +944,7 @@
       document.getElementById('authShell').style.position = 'relative';
     }
 
-    async function showDashboard() {
+    function showDashboard() {
       document.getElementById('pinScreen').style.display = 'none';
       document.getElementById('authShell').classList.add('hidden');
       document.getElementById('dashboard').style.display = 'none';
@@ -1254,7 +1254,9 @@
       if (isBiometricLockEnabled() && isPasskeyEnabled() && isWebAuthnSupported()) {
         setAuthMessage('Biometric lock enabled — unlocking...');
         setTimeout(() => {
-          authenticateWithPasskey();
+          void authenticateWithPasskey().catch((err) => {
+            console.error('auto biometric unlock failed:', err);
+          });
         }, 250);
       }
     }
@@ -1433,26 +1435,38 @@
     window.showToast = showToast;
 
     async function lockApp() {
-      await api('/auth/lock', { method: 'POST' });
-      clearToken();
-      document.getElementById('dashboard').style.display = 'none';
-      document.getElementById('dashboardShell').classList.add('hidden');
-      showNav(false);
-      resetPinEntry();
-      renderPinLogin();
+      try {
+        await api('/auth/lock', { method: 'POST' });
+      } catch (err) {
+        console.error('lockApp api failed:', err);
+      } finally {
+        clearToken();
+        document.getElementById('dashboard').style.display = 'none';
+        document.getElementById('dashboardShell').classList.add('hidden');
+        document.getElementById('dashboardShell').classList.remove('visible');
+        showNav(false);
+        resetPinEntry();
+        renderPinLogin();
+      }
     }
 
     const lockBtn = document.getElementById('lockBtn');
     if (lockBtn) lockBtn.addEventListener('click', lockApp);
 
-    document.addEventListener('visibilitychange', async () => {
-      if (document.hidden && sessionToken) {
-        await api('/auth/lock', { method: 'POST' });
-        clearToken();
-        showNav(false);
-        resetPinEntry();
-        renderPinLogin();
-      }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden || !sessionToken) return;
+      void (async () => {
+        try {
+          await api('/auth/lock', { method: 'POST' });
+        } catch (err) {
+          console.error('visibility lock failed:', err);
+        } finally {
+          clearToken();
+          showNav(false);
+          resetPinEntry();
+          renderPinLogin();
+        }
+      })();
     });
 
     async function initAuth() {
@@ -1486,7 +1500,7 @@
             if (r && r.ok) {
               setStartupStatus('Session restored. Opening dashboard...');
               showNav(true);
-              await showDashboard();
+              showDashboard();
               return;
             }
           } catch (e) {}

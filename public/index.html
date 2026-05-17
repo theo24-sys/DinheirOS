@@ -556,6 +556,9 @@
           <div class="fingerprint-row">
             <button id="fpBtn" class="fingerprint-btn" type="button"><span class="icon">🔐</span><span>Fingerprint</span></button>
           </div>
+          <div class="fingerprint-row" style="margin-top:10px;">
+            <button id="passkeySetupBtn" class="fingerprint-btn" type="button" style="min-width:240px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16);display:flex;"><span class="icon">🪪</span><span>Set Up Passkey</span></button>
+          </div>
           <div id="attemptInfo" class="error-line"></div>
           <div id="authFooter" class="muted" style="text-align:center; margin-top: 8px; min-height: 20px;"></div>
         </div>
@@ -600,6 +603,7 @@
         <div style="background:rgba(255,255,255,0.07);border-radius:16px;padding:16px;">
           <div style="font-size:14px;color:rgba(255,255,255,0.6);margin-bottom:8px;">App Version</div>
           <div style="font-size:16px;font-weight:600;">DinheirOS v1.0.0</div>
+          <button id="settingsPasskeyBtn" type="button" style="margin-top:14px;width:100%;padding:12px 14px;border:none;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-weight:700;cursor:pointer;">Set Up Passkey</button>
         </div>
       </div>
 
@@ -998,6 +1002,103 @@
       return Math.min(100, Math.max(0, (used / maxCount) * 100));
     }
 
+    function isWebAuthnSupported() {
+      return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get && navigator.credentials.create && window.isSecureContext);
+    }
+
+    function getRpId() {
+      if (!window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return undefined;
+      }
+      return window.location.hostname;
+    }
+
+    function setPasskeyState(enabled) {
+      if (enabled) localStorage.setItem('dinheiros_passkey', '1');
+      else localStorage.removeItem('dinheiros_passkey');
+    }
+
+    function isPasskeyEnabled() {
+      return localStorage.getItem('dinheiros_passkey') === '1';
+    }
+
+    async function setupPasskey() {
+      if (!isWebAuthnSupported()) {
+        showToast('Passkeys are not supported on this device', 'warning');
+        return;
+      }
+      try {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const userId = crypto.getRandomValues(new Uint8Array(16));
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { name: 'DinheirOS', ...(getRpId() ? { id: getRpId() } : {}) },
+            user: {
+              id: userId,
+              name: 'timothy@dinheiros.local',
+              displayName: 'Timothy'
+            },
+            pubKeyCredParams: [
+              { type: 'public-key', alg: -7 },
+              { type: 'public-key', alg: -257 }
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform',
+              residentKey: 'preferred',
+              userVerification: 'required'
+            },
+            timeout: 60000,
+            attestation: 'none'
+          }
+        });
+
+        if (credential) {
+          setPasskeyState(true);
+          updateFingerprintVisibility();
+          showToast('Passkey enabled. Use fingerprint or device passkey to unlock.', 'success');
+          const footer = document.getElementById('authFooter');
+          if (footer) footer.textContent = 'Passkey is ready on this device.';
+        }
+      } catch (err) {
+        showToast('Passkey setup cancelled or failed', 'warning');
+      }
+    }
+
+    async function authenticateWithPasskey() {
+      if (!isWebAuthnSupported()) {
+        showToast('Biometric not supported on this device', 'warning');
+        return;
+      }
+      try {
+        const credential = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rpId: getRpId(),
+            allowCredentials: [],
+            userVerification: 'required',
+            timeout: 60000
+          }
+        });
+
+        if (credential) {
+          const r = await api('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ biometric: true })
+          });
+          if (r.ok) {
+            const j = await r.json();
+            sessionToken = j.token;
+            sessionStorage.setItem('st', sessionToken);
+            showNav(true);
+            showDashboard();
+          }
+        }
+      } catch (err) {
+        showToast(isPasskeyEnabled() ? 'Passkey unlock failed — use PIN instead' : 'Set up a passkey first, then use fingerprint/passkey unlock', 'warning');
+      }
+    }
+
     async function requestAccess(walletName, amount) {
       showToast('Processing...', 'warning');
       try {
@@ -1058,43 +1159,7 @@
       }
     }
 
-    async function loadWallets() {
-      const r = await api('/status');
-      if (!r.ok) return;
-      const j = await r.json();
-      const cards = document.getElementById('walletCards');
-      if (!cards) return;
-
-      const emojis = { Fare:'🚍', Tokens:'⚡', Data:'📡', Meat:'🥩', Energy:'☕' };
-      const gradients = {
-        Fare: 'linear-gradient(135deg,#06b6d4,#0891b2)',
-        Tokens: 'linear-gradient(135deg,#f59e0b,#d97706)',
-        Data: 'linear-gradient(135deg,#3b82f6,#2563eb)',
-        Meat: 'linear-gradient(135deg,#ef4444,#dc2626)',
-        Energy: 'linear-gradient(135deg,#8b5cf6,#7c3aed)'
-      };
-
-      cards.innerHTML = '';
-
-      (j.wallets || []).forEach((w, i) => {
-        const perAccess = Math.round(w.weekly_amount / w.weekly_max_count);
-        const usedPct = w.weekly_max_count > 0 ? (w.used_this_week / w.weekly_max_count) * 100 : 0;
-        const isLocked = w.used_this_week >= w.weekly_max_count;
-        const todayUsed = w.used_today >= 1;
-        const gradient = gradients[w.name] || 'linear-gradient(135deg,#7c3aed,#a78bfa)';
-        const emoji = emojis[w.name] || '💰';
-
-        const card = document.createElement('div');
-        card.style.cssText = `
-      background:${gradient};
-      border-radius:20px;
-      padding:16px;
-      animation:fadeInUp 0.4s ease ${i * 0.1}s both;
-      position:relative;
-      overflow:hidden;
-    `;
-
-        card.innerHTML = `
+    async function doFingerprint() { await authenticateWithPasskey(); }
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <span style="font-size:22px;">${emoji}</span>
         ${isLocked ? '<span style="background:rgba(255,255,255,0.25);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:0.05em;">LOCKED</span>' : ''}
@@ -1223,16 +1288,27 @@
 
     function updateFingerprintVisibility() {
       const fpBtn = document.getElementById('fpBtn');
-      if (window.PublicKeyCredential) {
+      const setupBtn = document.getElementById('passkeySetupBtn');
+      const settingsBtn = document.getElementById('settingsPasskeyBtn');
+      if (isWebAuthnSupported()) {
         fpBtn.style.display = 'flex';
+        fpBtn.querySelector('.icon + span').textContent = isPasskeyEnabled() ? 'Use Passkey' : 'Fingerprint';
+        if (setupBtn) setupBtn.style.display = 'flex';
+        if (settingsBtn) settingsBtn.style.display = 'block';
       } else {
         fpBtn.style.display = 'none';
+        if (setupBtn) setupBtn.style.display = 'none';
+        if (settingsBtn) settingsBtn.style.display = 'none';
+        const footer = document.getElementById('authFooter');
+        if (footer) footer.textContent = 'This device does not expose passkey or fingerprint APIs.';
       }
     }
 
     async function init() {
       updateFingerprintVisibility();
       document.getElementById('fpBtn').addEventListener('click', doFingerprint);
+      document.getElementById('passkeySetupBtn').addEventListener('click', setupPasskey);
+      document.getElementById('settingsPasskeyBtn').addEventListener('click', setupPasskey);
       updateDots();
       renderPad(onPad);
       showNav(false);

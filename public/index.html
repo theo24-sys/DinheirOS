@@ -1315,17 +1315,40 @@
       showAuthScreen();
     }
 
-    window.addEventListener('load', () => {
-      setTimeout(async () => {
-        document.getElementById('splash').style.opacity = '0';
-        setTimeout(() => {
-          document.getElementById('splash').style.display = 'none';
-          initAuth();
-        }, 500);
-      }, 2000);
-    });
+    function hideSplash() {
+      const splash = document.getElementById('splash');
+      if (!splash) return;
+      splash.style.opacity = '0';
+      setTimeout(() => {
+        splash.style.display = 'none';
+      }, 300);
+    }
 
-    init();
+    async function bootApp() {
+      try {
+        init();
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+
+      setTimeout(hideSplash, 600);
+
+      try {
+        await initAuth();
+      } catch (err) {
+        console.error('Startup auth error:', err);
+        showNav(false);
+        renderPinLogin();
+      } finally {
+        hideSplash();
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootApp, { once: true });
+    } else {
+      bootApp();
+    }
   </script>
 </body>
 </html>

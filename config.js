@@ -7,9 +7,10 @@ module.exports = {
       rollover: true
     },
     Tokens: {
-      weeklyAmount: 150,
+      weeklyAmount: 180,
       maxCount: 1,
-      perAccessAmount: 50,
+      perAccessAmount: 180,
+      dailyLimit: 1,
       rollover: true
     },
     Data: {

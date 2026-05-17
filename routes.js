@@ -157,23 +157,35 @@ router.post('/withdraw', async (req, res) => {
     // Try Mpesa B2C (Mock if secrets not present or failure)
     try {
       if (process.env.DARAJA_CONSUMER_KEY) {
-        await sendB2C(wallet, amount);
+        await sendB2C(amount, wallet);
       } else {
-        console.log(`[MOCK] B2C transfer of ${amount} to ${wallet} successful.`);
+        console.log(`[MOCK] B2C transfer of ${amount} to ${wallet}`);
       }
     } catch (mpesaError) {
-       console.error("Mpesa Error:", mpesaError.message);
-       return res.status(500).json({ error: 'M-Pesa transaction failed' });
+      console.error('Mpesa Error:', mpesaError.message);
+      return res.status(500).json({ error: 'M-Pesa transaction failed' });
     }
 
     // Update counters on success
     await execStmt('UPDATE wallets SET used_today = used_today + 1, used_this_week = used_this_week + 1, balance = balance - ? WHERE name = ?', [amount, wallet]);
     await execStmt('INSERT INTO withdrawals (wallet_id, amount) VALUES (?, ?)', [walletRow.id, amount]);
-    await execStmt('INSERT INTO transactions (wallet_id, type, amount, note) VALUES (?, ?, ?, ?)', [walletRow.id, 'withdraw', amount, 'Gate passed, Mpesa sent']);
+    await execStmt('INSERT INTO transactions (wallet_id, type, amount, note) VALUES (?, ?, ?, ?)', [walletRow.id, 'withdraw', amount, 'Gate passed']);
 
     res.json({ message: 'Withdrawal successful', amount, wallet });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// History endpoint: last 20 transactions
+router.get('/history', async (req, res) => {
+  try {
+    const rows = await runQuery(
+      'SELECT t.*, w.name as wallet_name FROM transactions t JOIN wallets w ON t.wallet_id = w.id ORDER BY t.timestamp DESC LIMIT 20'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

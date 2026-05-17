@@ -93,11 +93,14 @@ router.post('/auth/login', async (req, res) => {
     if (biometric) {
       const token = await auth.createSession();
       await auth.logAttempt(true);
+      console.log('[AUTH] biometric login -> session', token ? token.slice(0,8) + '...' : token);
       return res.json({ success: true, token });
     }
 
     if (!pin) return res.status(400).json({ error: 'PIN required' });
-    if (await auth.verifyPin(String(pin))) {
+    const verified = await auth.verifyPin(String(pin));
+    console.log('[AUTH] PIN login attempt, verified=', verified);
+    if (verified) {
       await auth.logAttempt(true);
       const token = await auth.createSession();
       return res.json({ success: true, token });
@@ -134,7 +137,9 @@ router.post('/lock', async (req, res) => {
 router.use('/withdraw', async (req, res, next) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
+    console.log('[AUTH] /withdraw middleware token=', token ? (String(token).slice(0,8) + '...') : '<none>');
     if (!token || !(await auth.validateSession(token))) {
+      console.log('[AUTH] /withdraw -> unauthorized (invalid or missing session)');
       return res.status(401).json({ error: 'Unauthorized. Please login.' });
     }
     next();

@@ -1214,53 +1214,60 @@
         }
       }
     }
-
     async function doFingerprint() { await authenticateWithPasskey(); }
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:22px;">${emoji}</span>
-        ${isLocked ? '<span style="background:rgba(255,255,255,0.25);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:0.05em;">LOCKED</span>' : ''}
-        ${todayUsed && !isLocked ? '<span style="background:rgba(0,0,0,0.2);color:#fff;font-size:10px;padding:3px 8px;border-radius:20px;">Used today</span>' : ''}
-      </div>
-      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:4px;">${w.name}</div>
-      <div style="font-size:24px;font-weight:800;color:#fff;margin-bottom:12px;">Ksh ${perAccess}</div>
-      <div style="background:rgba(255,255,255,0.25);border-radius:4px;height:4px;margin-bottom:6px;">
-        <div style="background:#fff;height:4px;border-radius:4px;width:${usedPct}%;transition:width 0.5s ease;"></div>
-      </div>
-      <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-bottom:12px;">${w.used_this_week} of ${w.weekly_max_count} uses this week</div>
-      <button
-        onclick="requestAccess('${w.name}', ${perAccess})"
-        style="
-          width:100%;
-          padding:10px;
-          border-radius:12px;
-          border:none;
-          background:rgba(255,255,255,0.95);
-          color:${gradient.includes('06b6d4') ? '#0891b2' : gradient.includes('f59e0b') ? '#d97706' : gradient.includes('3b82f6') ? '#2563eb' : gradient.includes('ef4444') ? '#dc2626' : '#7c3aed'};
-          font-weight:700;
-          font-size:14px;
-          cursor:pointer;
-          transition:transform 0.1s ease,opacity 0.1s ease;
-          ${isLocked ? 'opacity:0.5;pointer-events:none;' : ''}
-        "
-        ${isLocked ? 'disabled' : ''}
-      >
-        ${isLocked ? '🔒 Locked' : todayUsed ? '✓ Used Today' : 'Request Access'}
-      </button>
-    `;
 
-        card.querySelector('button')?.addEventListener('touchstart', (e) => {
-          e.currentTarget.style.transform = 'scale(0.96)';
+    async function loadWallets() {
+      const cards = document.getElementById('walletCards');
+      if (!cards) return;
+      cards.innerHTML = '<div style="color:rgba(255,255,255,0.5);text-align:center;padding:20px;">Loading wallets...</div>';
+      try {
+        const res = await api('/status');
+        if (!res || !res.ok) {
+          cards.innerHTML = '<div style="color:#ef4444;text-align:center;">Failed to load wallets</div>';
+          return;
+        }
+        const data = await res.json();
+        const wallets = data.wallets || [];
+        cachedWallets = wallets;
+        cards.innerHTML = '';
+        wallets.forEach(w => {
+          const perAccess = Number(w.per_access_amount || w.perAccess || Math.max(1, Math.round((Number(w.weekly_amount || 0) / (Number(w.weekly_max_count || 1)) || 1))));
+          const usedPct = walletProgressPercent(w);
+          const isLocked = Boolean(w.locked);
+          const todayUsed = Number(w.used_today || 0) > 0;
+
+          const card = document.createElement('div');
+          card.className = 'wallet-card';
+          card.setAttribute('data-wallet', w.name);
+          card.innerHTML =
+            '<div class="wallet-head">' +
+              '<div class="wallet-name">' + (walletIcon(w.name) + ' ' + walletLabel(w.name)) + '</div>' +
+              '<div class="lock-badge" style="display:' + (isLocked ? 'inline-flex' : 'none') + ';">LOCKED</div>' +
+            '</div>' +
+            '<div class="wallet-amount">Ksh ' + (Number(w.balance || w.weekly_amount || 0)) + '</div>' +
+            '<div class="wallet-progress-track"><div class="wallet-progress-fill" style="width:' + usedPct + '%"></div></div>' +
+            '<div class="wallet-uses">' + (w.used_this_week || 0) + ' of ' + (w.weekly_max_count || 0) + ' uses this week</div>' +
+            '<button class="request-btn" ' + (isLocked ? 'disabled' : '') + '>' + (isLocked ? '🔒 Locked' : (todayUsed ? '✓ Used Today' : 'Request Access')) + '</button>';
+
+          const btn = card.querySelector('button');
+          if (btn) {
+            btn.addEventListener('click', (ev) => {
+              showRipple(btn, ev);
+              if (!isLocked && !todayUsed) requestAccess(w.name, perAccess);
+            });
+            btn.addEventListener('touchstart', () => btn.style.transform = 'scale(0.96)');
+            btn.addEventListener('touchend', () => btn.style.transform = 'scale(1)');
+          }
+
+          cards.appendChild(card);
         });
-        card.querySelector('button')?.addEventListener('touchend', (e) => {
-          e.currentTarget.style.transform = 'scale(1)';
-        });
 
-        cards.appendChild(card);
-      });
-
-      const cardsFull = document.getElementById('walletCardsFull');
-      if (cardsFull) {
-        cardsFull.innerHTML = cards.innerHTML;
+        const cardsFull = document.getElementById('walletCardsFull');
+        if (cardsFull) cardsFull.innerHTML = cards.innerHTML;
+      } catch (err) {
+        console.error('loadWallets error', err);
+        pushError(err.stack || err.message || String(err));
+        cards.innerHTML = '<div style="color:#ef4444;text-align:center;">Error loading wallets</div>';
       }
     }
 

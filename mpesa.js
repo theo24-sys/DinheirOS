@@ -49,5 +49,21 @@ async function sendB2C(amount, walletName) {
   }
 }
 
+async function handleWithdrawal(amount, walletName) {
+  try {
+    const response = await sendB2C(amount, walletName);
+    console.log('M-Pesa API Response:', response);
+    if (response.ResponseCode === '0') {
+      console.log('Transaction successful:', response);
+      return { success: true, message: 'Transaction successful', data: response };
+    } else {
+      console.error('Transaction failed:', response);
+      return { success: false, message: 'Transaction failed', data: response };
+    }
+  } catch (error) {
+    console.error('Error during withdrawal:', error.message);
+    return { success: false, message: 'Error during withdrawal', error: error.message };
+  }
+}
 
-module.exports = { getAccessToken, sendB2C };
+module.exports = { getAccessToken, sendB2C, handleWithdrawal };

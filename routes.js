@@ -186,6 +186,45 @@ router.post('/withdraw', async (req, res) => {
   }
 });
 
+// --- Withdrawal endpoint ---
+router.post('/withdraw', async (req, res) => {
+  try {
+    const { walletName, amount } = req.body;
+    if (!walletName || !amount) {
+      return res.status(400).json({ error: 'Wallet name and amount are required' });
+    }
+
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token || !(await auth.validateSession(token))) {
+      return res.status(401).json({ error: 'Unauthorized. Please login.' });
+    }
+
+    const { walletConfig, walletRow } = await getWalletInfo(walletName);
+
+    // Check if withdrawal is allowed
+    const evaluation = evaluateWithdrawal(walletRow, walletConfig, amount);
+    if (!evaluation.success) {
+      return res.status(400).json({ error: evaluation.message });
+    }
+
+    // Process withdrawal via M-Pesa
+    const result = await sendB2C(amount, walletName);
+    if (result.ResponseCode === '0') {
+      // Update wallet balance and usage
+      const newBalance = walletRow.balance - amount;
+      const newUsedThisWeek = walletRow.used_this_week + 1;
+      await execStmt('UPDATE wallets SET balance = ?, used_this_week = ? WHERE name = ?', [newBalance, newUsedThisWeek, walletName]);
+
+      return res.json({ success: true, message: 'Withdrawal successful', result });
+    } else {
+      return res.status(500).json({ error: 'M-Pesa transaction failed', details: result });
+    }
+  } catch (error) {
+    console.error('Withdrawal Error:', error.message);
+    res.status(500).json({ error: 'An error occurred during withdrawal', details: error.message });
+  }
+});
+
 // History endpoint: last 20 transactions
 router.get('/history', async (req, res) => {
   try {

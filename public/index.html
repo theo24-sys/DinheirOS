@@ -812,6 +812,15 @@
       status.style.color = color || 'rgba(255,255,255,0.75)';
     }
 
+    // Safe DOM helpers to avoid errors when elements are missing (prevents TypeError)
+    function safeGetEl(id) {
+      try { return document.getElementById(id); } catch (e) { return null; }
+    }
+    function safeSetDisplay(id, value) {
+      const el = safeGetEl(id);
+      if (el && el.style) el.style.display = value;
+    }
+
     // Runtime error capture (visible in splash) -------------------------------------------------
     window._capturedErrors = [];
     function pushError(msg) {
@@ -936,20 +945,28 @@
     }
 
     function showAuthScreen() {
-      document.getElementById('pinScreen').style.display = 'flex';
-      document.getElementById('authShell').classList.remove('hidden');
-      document.getElementById('dashboard').style.display = 'none';
-      document.getElementById('dashboardShell').classList.add('hidden');
-      document.getElementById('dashboardShell').classList.remove('visible');
-      document.getElementById('authShell').style.position = 'relative';
+      safeSetDisplay('pinScreen', 'flex');
+      const authShellEl = safeGetEl('authShell');
+      if (authShellEl) authShellEl.classList.remove('hidden');
+      safeSetDisplay('dashboard', 'none');
+      const dashShell = safeGetEl('dashboardShell');
+      if (dashShell) {
+        dashShell.classList.add('hidden');
+        dashShell.classList.remove('visible');
+      }
+      if (authShellEl) authShellEl.style.position = 'relative';
     }
 
     function showDashboard() {
-      document.getElementById('pinScreen').style.display = 'none';
-      document.getElementById('authShell').classList.add('hidden');
-      document.getElementById('dashboard').style.display = 'none';
-      document.getElementById('dashboardShell').classList.remove('hidden');
-      document.getElementById('dashboardShell').classList.add('visible');
+      safeSetDisplay('pinScreen', 'none');
+      const authShellEl = safeGetEl('authShell');
+      if (authShellEl) authShellEl.classList.add('hidden');
+      safeSetDisplay('dashboard', 'none');
+      const dashShell = safeGetEl('dashboardShell');
+      if (dashShell) {
+        dashShell.classList.remove('hidden');
+        dashShell.classList.add('visible');
+      }
       showNav(true);
       setGreeting();
       showTab('home');
@@ -1441,9 +1458,12 @@
         console.error('lockApp api failed:', err);
       } finally {
         clearToken();
-        document.getElementById('dashboard').style.display = 'none';
-        document.getElementById('dashboardShell').classList.add('hidden');
-        document.getElementById('dashboardShell').classList.remove('visible');
+        safeSetDisplay('dashboard', 'none');
+        const dashShell = safeGetEl('dashboardShell');
+        if (dashShell) {
+          dashShell.classList.add('hidden');
+          dashShell.classList.remove('visible');
+        }
         showNav(false);
         resetPinEntry();
         renderPinLogin();
@@ -1597,13 +1617,6 @@
         });
       }
     }, 2000);
-
-      init().catch((err) => {
-        console.error('init failed:', err);
-        setStartupStatus('Startup recovered after error. Showing PIN screen.', '#f87171');
-        showNav(false);
-        renderPinLogin();
-      });
     };
 
     if (document.readyState === 'loading') {

@@ -18,17 +18,18 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Simple health check
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// API routes
+app.use('/api', routes);
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-
-// API routes
-app.use('/api', routes);
-
-// Simple health check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Initialise DB (creates tables if missing)
 initDatabase();

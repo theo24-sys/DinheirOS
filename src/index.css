@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased selection:bg-slate-900 selection:text-white;
+  }
+}
+
+:root {
+  --f-mono: 'JetBrains Mono', monospace;
+  --f-sans: 'Inter', sans-serif;
+}
+
+.finance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.trace-indicator {
+  @apply w-1 h-full rounded-full transition-all;
+}
+
+.code-panel {
+  @apply p-4 bg-slate-900 text-white font-mono text-[10px] leading-relaxed;
+}
+
+.section-header {
+  @apply text-xs font-bold uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2;
+}
+

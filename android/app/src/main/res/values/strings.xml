@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FinanceOS</string>
+    <string name="title_activity_main">FinanceOS</string>
+    <string name="package_name">com.financeos.app</string>
+    <string name="custom_url_scheme">com.financeos.app</string>
+</resources>

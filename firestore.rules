@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return isSignedIn() && request.auth.token.email == 'morggytechnologies@gmail.com' && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Wallet Validation
+    function isValidWallet(data) {
+      return data.keys().hasAll(['id', 'name', 'allocation', 'maxFrequency', 'usedFrequency', 'locked', 'perWithdrawalAmount'])
+        && data.id is string && data.id.size() <= 64
+        && data.name is string && data.name.size() <= 64
+        && data.allocation is number && data.allocation >= 0
+        && data.maxFrequency is number && data.maxFrequency > 0
+        && data.usedFrequency is number && data.usedFrequency >= 0
+        && data.locked is bool
+        && data.perWithdrawalAmount is number && data.perWithdrawalAmount > 0;
+    }
+
+    match /wallets/{walletId} {
+      allow read: if isOwner();
+      
+      // Strict creation (initial seed)
+      allow create: if isOwner() && isValidWallet(incoming()) && isValidId(walletId);
+      
+      // Controlled updates (Withdrawal or Reset)
+      allow update: if isOwner() && isValidWallet(incoming()) && (
+        // Action: Record Withdrawal
+        (incoming().usedFrequency == existing().usedFrequency + 1 
+         && incoming().diff(existing()).affectedKeys().hasOnly(['usedFrequency', 'lastWithdrawalDate', 'updatedAt'])) ||
+        
+        // Action: Weekly Reset
+        (incoming().usedFrequency == 0 
+         && incoming().diff(existing()).affectedKeys().hasOnly(['usedFrequency', 'rolloverBonus', 'locked', 'updatedAt'])) ||
+
+        // Action: Toggle Lock
+        (incoming().diff(existing()).affectedKeys().hasOnly(['locked', 'updatedAt']))
+      );
+    }
+
+    match /transactions/{txId} {
+      allow read: if isOwner();
+      allow create: if isOwner() 
+        && incoming().keys().hasAll(['walletId', 'amount', 'timestamp', 'status'])
+        && incoming().walletId is string
+        && incoming().amount is number
+        && incoming().status in ['success', 'denied', 'pending'];
+      
+      allow update, delete: if false; // Transactions are immutable ledger entries
+    }
+  }
+}

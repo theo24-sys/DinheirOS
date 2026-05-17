@@ -1,0 +1,8 @@
+{
+  "name": "FinanceOS: Behavioral Control",
+  "description": "A rule-governed access control system for personal finance that enforces spending discipline through frequency limits and timed gates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

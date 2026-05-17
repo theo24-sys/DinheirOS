@@ -1,4 +1,4 @@
-package com.financeos.app;
+package com.morggy.dinheiros;
 
 import com.getcapacitor.BridgeActivity;
 

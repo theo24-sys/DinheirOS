@@ -347,7 +347,7 @@ export default function App() {
               <motion.img src="/logo.svg" alt="DinheirOS" className="w-14 h-14 drop-shadow-lg" animate={pulseVariants} />
               <div>
                 <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">DinheirOS</h1>
-                <p className="text-xs text-slate-400">Personal Finance Control v1.0.6</p>
+                <p className="text-xs text-slate-400">Personal Finance Control v1.0.7</p>
               </div>
             </div>
             <motion.button
@@ -679,7 +679,7 @@ export default function App() {
               <motion.img src="/logo.svg" alt="DinheirOS" className="w-14 h-14 drop-shadow-lg" animate={pulseVariants} />
               <div>
                 <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">DinheirOS</h1>
-                <p className="text-xs text-slate-400">Personal Finance Control v1.0.6</p>
+                <p className="text-xs text-slate-400">Personal Finance Control v1.0.7</p>
               </div>
             </div>
             <motion.button

@@ -21,24 +21,33 @@ async function getAccessToken() {
 }
 
 async function sendB2C(amount, walletName) {
-  const token = await getAccessToken();
-  const response = await axios.post(
-    'https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest',
-    {
-      InitiatorName: process.env.DARAJA_INITIATOR_NAME,
-      SecurityCredential: process.env.DARAJA_SECURITY_CREDENTIAL,
-      CommandID: 'BusinessPayment',
-      Amount: amount,
-      PartyA: process.env.DARAJA_SHORTCODE,
-      PartyB: process.env.PERSONAL_MPESA_NUMBER,
-      Remarks: `FedhaOS ${walletName} withdrawal`,
-      QueueTimeOutURL: process.env.CALLBACK_URL,
-      ResultURL: process.env.CALLBACK_URL,
-      Occassion: walletName
-    },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return response.data;
+  try {
+    const token = await getAccessToken();
+    const response = await axios.post(
+      'https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest',
+      {
+        InitiatorName: process.env.DARAJA_INITIATOR_NAME,
+        SecurityCredential: process.env.DARAJA_SECURITY_CREDENTIAL,
+        CommandID: 'BusinessPayment',
+        Amount: amount,
+        PartyA: process.env.DARAJA_SHORTCODE,
+        PartyB: process.env.PERSONAL_MPESA_NUMBER,
+        Remarks: `FedhaOS ${walletName} withdrawal`,
+        QueueTimeOutURL: process.env.CALLBACK_URL,
+        ResultURL: process.env.CALLBACK_URL,
+        Occassion: walletName
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('M-Pesa B2C Transfer Error:', error.message);
+    if (error.response && error.response.data) {
+      console.error('M-Pesa API Error Details:', JSON.stringify(error.response.data, null, 2));
+    }
+    throw error;
+  }
 }
+
 
 module.exports = { getAccessToken, sendB2C };

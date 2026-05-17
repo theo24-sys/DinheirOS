@@ -3,24 +3,146 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DinheirOS - Personal Finance Control</title>
+  <title>DinheirOS - System Interface</title>
   <link rel="icon" href="/logo.svg" type="image/svg+xml" />
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Simple glassmorphism effect */
-    .glass {
-      backdrop-filter: blur(8px);
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 0.75rem;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    :root {
+      --bg-color: #0a0a0a;
+      --card-bg: #111111;
+      --border-color: #222222;
+      --accent-color: #00ff88;
+      --text-primary: #ffffff;
+      --text-secondary: #888888;
+      --alert-color: #ff3333;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      font-family: 'Inter', system-ui, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 800px;
+    }
+
+    .header {
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 700;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      padding: 1.5rem;
+      position: relative;
+    }
+
+    .wallet-name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin: 0 0 1rem 0;
+    }
+
+    .weekly-amount {
+      color: var(--accent-color);
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    .pip-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .pip {
+      width: 12px;
+      height: 12px;
+      border: 1px solid var(--text-secondary);
+      border-radius: 2px;
+    }
+
+    .pip.filled {
+      background-color: var(--text-primary);
+      border-color: var(--text-primary);
+    }
+
+    .lock-state {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      color: var(--alert-color);
+      font-weight: 700;
+      font-size: 0.875rem;
+      letter-spacing: 1px;
+    }
+
+    .per-access {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn {
+      width: 100%;
+      background-color: var(--accent-color);
+      color: #000000;
+      border: none;
+      padding: 1rem;
+      font-weight: 700;
+      font-size: 1rem;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover {
+      opacity: 0.8;
+    }
+
+    .btn:disabled {
+      background-color: var(--border-color);
+      color: var(--text-secondary);
+      cursor: not-allowed;
     }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
-  <div class="max-w-4xl w-full glass p-6 shadow-lg">
-    <h1 class="text-3xl font-bold text-center mb-6">FinanceOS Dashboard</h1>
-    <div id="wallets" class="grid gap-4 md:grid-cols-2"></div>
+<body>
+  <div class="container">
+    <div class="header">SYSTEM_CORE // FinanceOS</div>
+    <div id="wallets" class="grid"></div>
   </div>
 
   <script>
@@ -32,19 +154,29 @@
       const container = document.getElementById('wallets');
       container.innerHTML = '';
       data.wallets.forEach(w => {
+        const amount = w.weekly_amount / w.weekly_max_count;
+        const isLocked = w.used_this_week >= w.weekly_max_count;
+
         const card = document.createElement('div');
-        card.className = 'bg-white p-4 rounded-lg shadow hover:shadow-lg transition';
+        card.className = 'card';
+        
+        let pipsHtml = '';
+        for (let i = 0; i < w.weekly_max_count; i++) {
+          pipsHtml += `<div class="pip ${i < w.used_this_week ? 'filled' : ''}"></div>`;
+        }
+
         card.innerHTML = `
-          <h2 class="text-xl font-semibold mb-2">${w.name}</h2>
-          <p>Daily: ${w.used_today}/${w.daily_limit}</p>
-          <p>Weekly: ${w.used_this_week}/${w.weekly_max_count}</p>
-          <p>Balance: ${w.balance}/${w.weekly_amount}</p>
-          <button class="mt-2 w-full bg-blue-600 text-white py-1 rounded hover:bg-blue-700" data-wallet="${w.name}">Request Access</button>
+          ${isLocked ? '<div class="lock-state">LOCKED</div>' : ''}
+          <h2 class="wallet-name">${w.name}</h2>
+          <div class="weekly-amount">WEEKLY: ${w.balance}/${w.weekly_amount}</div>
+          <div class="pip-row">${pipsHtml}</div>
+          <div class="per-access">PER ACCESS: ${amount.toFixed(2)}</div>
+          <button class="btn" data-wallet="${w.name}" ${isLocked ? 'disabled' : ''}>Request Access</button>
         `;
+
         // attach click handler
         const btn = card.querySelector('button');
         btn.addEventListener('click', async () => {
-          const amount = w.weekly_amount / w.weekly_max_count; // simple per‑access amount
           const res = await fetch('/api/withdraw', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

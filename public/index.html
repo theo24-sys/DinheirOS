@@ -540,6 +540,7 @@
     <div style="margin-top:40px;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,0.2);overflow:hidden;">
       <div style="height:100%;background:linear-gradient(90deg,#7c3aed,#a78bfa);animation:loadbar 2s ease forwards;"></div>
     </div>
+    <div id="startupStatus" style="margin-top:18px;min-height:42px;padding:0 24px;color:rgba(255,255,255,0.75);font-size:13px;text-align:center;line-height:1.4;"></div>
   </div>
 
   <div class="app">
@@ -742,6 +743,13 @@
 
     function getSavedToken() {
       try { return sessionStorage.getItem('st'); } catch (e) { return null; }
+    }
+
+    function setStartupStatus(message, color) {
+      const status = document.getElementById('startupStatus');
+      if (!status) return;
+      status.textContent = message || '';
+      status.style.color = color || 'rgba(255,255,255,0.75)';
     }
 
     function getGreeting() {
@@ -1274,6 +1282,7 @@
     async function initAuth() {
       try {
         // Test connection first
+        setStartupStatus('Checking server connection...');
         const pingOptions = {};
         if (window.AbortSignal && typeof AbortSignal.timeout === 'function') {
           pingOptions.signal = AbortSignal.timeout(3000);
@@ -1286,9 +1295,11 @@
             splash.style.display = 'flex';
             splash.innerHTML += '<p style="color:#ef4444;margin-top:20px;font-size:13px;text-align:center;">⚠️ Server not reachable<br>Make sure Termux is running<br>node server.js</p>';
           }
+          setStartupStatus('Server not reachable. Make sure Termux is running and node server.js is active.', '#f87171');
           return;
         }
 
+        setStartupStatus('Checking saved session...');
         const savedToken = getSavedToken();
         if (savedToken) {
           sessionToken = savedToken;
@@ -1297,6 +1308,7 @@
               headers: { Authorization: 'Bearer ' + savedToken }
             }).catch(() => null);
             if (r && r.ok) {
+              setStartupStatus('Session restored. Opening dashboard...');
               showNav(true);
               await showDashboard();
               return;
@@ -1305,13 +1317,16 @@
           clearToken();
         }
 
+        setStartupStatus('Loading PIN screen...');
         const r2 = await fetch('/api/auth/status').catch(() => null);
         const pinSet = r2 && r2.ok ? (await r2.json()).pinSet : false;
         showNav(false);
         if (!pinSet) renderPinSetup();
         else renderPinLogin();
+        setStartupStatus('');
       } catch (err) {
         console.error('initAuth error:', err);
+        setStartupStatus('Startup failed. Falling back to PIN screen.', '#f87171');
         showNav(false);
         renderPinLogin();
       }
@@ -1354,6 +1369,7 @@
     }
 
     const splash = document.getElementById('splash');
+    setStartupStatus('Booting app...');
     setTimeout(() => {
       if (splash) {
         splash.style.transition = 'opacity 0.6s ease';

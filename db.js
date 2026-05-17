@@ -131,5 +131,22 @@ module.exports = {
     
     const changes = database.getRowsModified();
     return { lastID, changes };
+  },
+  /**
+   * Helper to execute a statement without returning rows.
+   */
+  execStmt: async (sql, params = []) => {
+    const database = await getDb();
+    const stmt = database.prepare(sql);
+    if (params && params.length > 0) {
+      stmt.bind(params);
+    } else if (params && typeof params === 'object') {
+      stmt.bind(params);
+    }
+    while (stmt.step()) {
+      // Execute the statement
+    }
+    stmt.free();
+    saveDb();
   }
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WalletCard } from './components/WalletCard';
 import { Wallet } from './services/gatekeeper';
 import { 
-  Fingerprint, TrendingUp, TrendingDown, Zap, DollarSign, 
+  Fingerprint, TrendingDown, Zap, DollarSign, 
   Calendar, Clock, LogOut, AlertCircle, Lock, Eye, EyeOff, Unlock 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -196,7 +196,7 @@ export default function App() {
             </motion.div>
 
             <motion.div variants={itemVariants} className="text-center mb-8">
-              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400 mb-2">FinanceOS</h1>
+              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400 mb-2">DinheirOS</h1>
               <p className="text-slate-400 text-sm">Create Your Security PIN</p>
             </motion.div>
 
@@ -266,7 +266,7 @@ export default function App() {
             </motion.div>
 
             <motion.div variants={itemVariants} className="text-center mb-8">
-              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">FinanceOS</h1>
+              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">DinheirOS</h1>
               <p className="text-slate-400 text-sm">Enter Your PIN</p>
             </motion.div>
 
@@ -344,12 +344,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <motion.div animate={pulseVariants} className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </motion.div>
+              <motion.img src="/logo.svg" alt="DinheirOS" className="w-14 h-14 drop-shadow-lg" animate={pulseVariants} />
               <div>
-                <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">FinanceOS</h1>
-                <p className="text-xs text-slate-400">Behavioral Gatekeeper v1.0.6</p>
+                <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">DinheirOS</h1>
+                <p className="text-xs text-slate-400">Personal Finance Control v1.0.6</p>
               </div>
             </div>
             <motion.button
@@ -600,7 +598,7 @@ export default function App() {
             </motion.div>
 
             <motion.div variants={itemVariants} className="text-center mb-8">
-              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">FinanceOS</h1>
+              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">DinheirOS</h1>
               <p className="text-slate-400 text-sm">Enter Your PIN</p>
             </motion.div>
 
@@ -678,12 +676,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <motion.div animate={pulseVariants} className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </motion.div>
+              <motion.img src="/logo.svg" alt="DinheirOS" className="w-14 h-14 drop-shadow-lg" animate={pulseVariants} />
               <div>
-                <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">FinanceOS</h1>
-                <p className="text-xs text-slate-400">Behavioral Gatekeeper v1.0.6</p>
+                <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">DinheirOS</h1>
+                <p className="text-xs text-slate-400">Personal Finance Control v1.0.6</p>
               </div>
             </div>
             <motion.button
@@ -1032,3 +1028,4 @@ export default function App() {
     </div>
   );
 }
+

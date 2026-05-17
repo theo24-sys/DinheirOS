@@ -2,6 +2,7 @@
   "appId": "com.morggy.dinheiros",
   "appName": "DinheirOS",
   "webDir": "public",
+  "icon": "public/logo.svg",
   "server": {
     "url": "http://127.0.0.1:3000",
     "cleartext": true,

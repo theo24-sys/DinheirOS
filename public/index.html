@@ -694,7 +694,7 @@
   </nav>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    const boot = () => {
     // In-memory token only
     let sessionToken = null;
     let pinTemp = null;
@@ -1259,7 +1259,8 @@
       renderPinLogin();
     }
 
-    document.getElementById('lockBtn').addEventListener('click', lockApp);
+    const lockBtn = document.getElementById('lockBtn');
+    if (lockBtn) lockBtn.addEventListener('click', lockApp);
 
     document.addEventListener('visibilitychange', async () => {
       if (document.hidden && sessionToken) {
@@ -1273,7 +1274,11 @@
     async function initAuth() {
       try {
         // Test connection first
-        const ping = await fetch('/health', { signal: AbortSignal.timeout(3000) }).catch(() => null);
+        const pingOptions = {};
+        if (window.AbortSignal && typeof AbortSignal.timeout === 'function') {
+          pingOptions.signal = AbortSignal.timeout(3000);
+        }
+        const ping = await fetch('/health', pingOptions).catch(() => null);
         if (!ping || !ping.ok) {
           const splash = document.getElementById('splash');
           if (splash) {
@@ -1291,7 +1296,7 @@
             const r = await fetch('/api/auth/status', {
               headers: { Authorization: 'Bearer ' + savedToken }
             }).catch(() => null);
-            if (r.ok) {
+            if (r && r.ok) {
               showNav(true);
               await showDashboard();
               return;
@@ -1336,30 +1341,40 @@
 
     async function init() {
       updateFingerprintVisibility();
-      document.getElementById('fpBtn').addEventListener('click', doFingerprint);
-      document.getElementById('passkeySetupBtn').addEventListener('click', setupPasskey);
-      document.getElementById('settingsPasskeyBtn').addEventListener('click', setupPasskey);
+      const fpBtn = document.getElementById('fpBtn');
+      const passkeySetupBtn = document.getElementById('passkeySetupBtn');
+      const settingsPasskeyBtn = document.getElementById('settingsPasskeyBtn');
+      if (fpBtn) fpBtn.addEventListener('click', doFingerprint);
+      if (passkeySetupBtn) passkeySetupBtn.addEventListener('click', setupPasskey);
+      if (settingsPasskeyBtn) settingsPasskeyBtn.addEventListener('click', setupPasskey);
       updateDots();
       renderPad(onPad);
       showNav(false);
       showAuthScreen();
     }
 
-    window.addEventListener('load', () => {
-      const splash = document.getElementById('splash');
-      // Force transition after 2.5 seconds no matter what
-      setTimeout(() => {
-        splash.style.transition = 'opacity 0.5s ease';
+    const splash = document.getElementById('splash');
+    setTimeout(() => {
+      if (splash) {
+        splash.style.transition = 'opacity 0.6s ease';
         splash.style.opacity = '0';
         setTimeout(() => {
           splash.style.display = 'none';
           initAuth();
-        }, 500);
-      }, 2500);
-    });
+        }, 600);
+      } else {
+        initAuth();
+      }
+    }, 2000);
 
     init();
-    });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+      boot();
+    }
   </script>
 </body>
 </html>

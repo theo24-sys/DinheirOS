@@ -8,6 +8,7 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
+      'import.meta.env.VITE_SERVER_URL': JSON.stringify(env.VITE_SERVER_URL || 'http://127.0.0.1:3000'),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
     resolve: {

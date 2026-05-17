@@ -1,6 +1,6 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { Lock, Unlock, Zap, Bus, Wifi, Utensils, Coffee, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Lock, Unlock, TrendingUp, DollarSign, Zap, AlertCircle, CheckCircle2, Flame, Gem } from 'lucide-react';
 import { Wallet, GateDecision } from '../services/gatekeeper';
 
 interface WalletCardProps {
@@ -9,109 +9,252 @@ interface WalletCardProps {
   loading: boolean;
 }
 
-const iconMap: Record<string, React.ReactNode> = {
-  fare: <Bus className="w-6 h-6" />,
-  tokens: <Zap className="w-6 h-6" />,
-  data: <Wifi className="w-6 h-6" />,
-  meat: <Utensils className="w-6 h-6" />,
-  energy: <Coffee className="w-6 h-6" />,
+const iconMap: Record<string, { icon: React.ReactNode; gradient: string; color: string }> = {
+  food: { 
+    icon: <DollarSign className="w-8 h-8" />, 
+    gradient: 'from-emerald-400 to-teal-500',
+    color: 'emerald'
+  },
+  transport: { 
+    icon: <TrendingUp className="w-8 h-8" />, 
+    gradient: 'from-blue-400 to-cyan-500',
+    color: 'blue'
+  },
+  utilities: { 
+    icon: <Zap className="w-8 h-8" />, 
+    gradient: 'from-yellow-400 to-orange-500',
+    color: 'amber'
+  },
+  emergency: { 
+    icon: <Flame className="w-8 h-8" />, 
+    gradient: 'from-red-400 to-pink-500',
+    color: 'red'
+  },
+  wellness: { 
+    icon: <Gem className="w-8 h-8" />, 
+    gradient: 'from-purple-400 to-pink-500',
+    color: 'purple'
+  },
 };
 
 export const WalletCard: React.FC<WalletCardProps> = ({ wallet, onWithdraw, loading }) => {
   const effectiveMax = wallet.maxFrequency + wallet.rolloverBonus;
   const remaining = Math.max(0, effectiveMax - wallet.usedFrequency);
   const isLocked = wallet.locked || remaining === 0;
+  const usagePercent = (wallet.usedFrequency / effectiveMax) * 100;
 
-  const categoryLabels: Record<string, { label: string, color: string }> = {
-    fare: { label: 'Essential', color: 'bg-indigo-50 text-indigo-700' },
-    tokens: { label: 'Utilities', color: 'bg-blue-50 text-blue-700' },
-    data: { label: 'Emergency', color: 'bg-rose-50 text-rose-700' },
-    meat: { label: 'Nutrition', color: 'bg-amber-50 text-amber-700' },
-    energy: { label: 'Burnout Support', color: 'bg-purple-50 text-purple-700' },
+  const walletConfig = iconMap[wallet.id] || {
+    icon: <DollarSign className="w-8 h-8" />,
+    gradient: 'from-slate-400 to-slate-500',
+    color: 'slate'
   };
-
-  const cat = categoryLabels[wallet.id] || { label: 'System', color: 'bg-slate-100 text-slate-700' };
 
   return (
     <motion.div
       layout
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -5 }}
       id={`wallet-${wallet.id}`}
-      className={`relative overflow-hidden rounded-xl border-2 p-5 flex flex-col justify-between transition-all bg-white ${
+      className={`relative overflow-hidden rounded-2xl backdrop-blur-xl transition-all border ${
         isLocked 
-          ? 'border-slate-200 grayscale opacity-70' 
-          : 'border-slate-200 shadow-sm hover:border-indigo-200'
+          ? 'border-slate-600/30 bg-slate-800/30 opacity-60' 
+          : 'border-slate-600/30 bg-slate-800/50 hover:border-slate-500/50 hover:bg-slate-700/60 hover:shadow-2xl hover:shadow-slate-900/50'
       }`}
     >
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${cat.color}`}>
-            {cat.label}
-          </span>
-          <h2 className="text-lg font-bold mt-1 flex items-center gap-2">
-            <span className="opacity-70">{iconMap[wallet.id]}</span>
-            {wallet.name}
-          </h2>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">Allocation</p>
-          <p className="font-mono font-bold text-sm">KES {wallet.allocation.toFixed(2)}</p>
-        </div>
-      </div>
+      {/* Animated background gradient */}
+      {!isLocked && (
+        <motion.div
+          className={`absolute inset-0 bg-gradient-to-br ${walletConfig.gradient} opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none`}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+        />
+      )}
 
-      <div className="mb-4">
-        <div className="flex gap-1.5 h-1.5">
-          {Array.from({ length: effectiveMax }).map((_, i) => (
-            <div
-              key={i}
-              className={`flex-1 rounded-full ${
-                i < wallet.usedFrequency 
-                  ? 'bg-slate-900' 
-                  : i >= wallet.maxFrequency 
-                    ? 'border border-dashed border-indigo-400 bg-indigo-50' 
-                    : 'bg-slate-100'
+      {/* Floating money icons */}
+      {!isLocked && (
+        <>
+          <motion.div
+            className="absolute top-4 right-4 opacity-10"
+            animate={{ y: [-10, 10, -10], rotate: [0, 5, 0] }}
+            transition={{ duration: 3, repeat: Infinity }}
+          >
+            <DollarSign className="w-12 h-12 text-emerald-400" />
+          </motion.div>
+          <motion.div
+            className="absolute bottom-4 left-4 opacity-10"
+            animate={{ y: [10, -10, 10], rotate: [0, -5, 0] }}
+            transition={{ duration: 4, repeat: Infinity }}
+          >
+            <TrendingUp className="w-12 h-12 text-blue-400" />
+          </motion.div>
+        </>
+      )}
+
+      <div className="relative z-10 p-6 flex flex-col h-full justify-between">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <motion.div
+              animate={{ scale: isLocked ? 1 : [1, 1.05, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className={`p-3 rounded-xl bg-gradient-to-br ${walletConfig.gradient} shadow-lg`}
+            >
+              <div className="text-white">{walletConfig.icon}</div>
+            </motion.div>
+            <div>
+              <p className="text-xs text-slate-400 uppercase font-bold tracking-widest mb-1">Access Channel</p>
+              <h2 className="text-lg font-black text-white">{wallet.name}</h2>
+            </div>
+          </div>
+          {isLocked ? (
+            <Lock className="w-5 h-5 text-red-400" />
+          ) : (
+            <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+              <Unlock className="w-5 h-5 text-emerald-400" />
+            </motion.div>
+          )}
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-3 mb-6 bg-slate-900/50 rounded-xl p-4">
+          <div className="text-center">
+            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Allocation</p>
+            <motion.p
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-sm font-black text-emerald-400"
+            >
+              KES {(wallet.allocation / 1000).toFixed(1)}K
+            </motion.p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Per Slot</p>
+            <motion.p className="text-sm font-black text-blue-400">
+              KES {wallet.perWithdrawalAmount}
+            </motion.p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Remaining</p>
+            <motion.p className={`text-sm font-black ${remaining > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {remaining}/{effectiveMax}
+            </motion.p>
+          </div>
+        </div>
+
+        {/* Progress Bar with Animation */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-slate-400 uppercase font-bold">Weekly Usage</p>
+            <motion.p
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-[10px] text-slate-300 font-mono"
+            >
+              {usagePercent.toFixed(0)}%
+            </motion.p>
+          </div>
+          <div className="relative h-2 bg-slate-700 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${usagePercent}%` }}
+              transition={{ duration: 1 }}
+              className={`h-full rounded-full bg-gradient-to-r ${
+                remaining > 2 ? 'from-emerald-400 to-teal-500' :
+                remaining > 0 ? 'from-yellow-400 to-orange-500' :
+                'from-red-400 to-pink-500'
               }`}
             />
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-auto">
-        <div className="flex gap-4">
-          <div className="text-center">
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Freq</p>
-            <p className="text-xs font-mono font-bold">
-              {wallet.usedFrequency}/{effectiveMax}
-              {wallet.rolloverBonus > 0 && <span className="text-[10px] text-indigo-600 ml-1">+{wallet.rolloverBonus}</span>}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Slot</p>
-            <p className="text-xs font-mono font-bold">KES {wallet.perWithdrawalAmount}</p>
           </div>
         </div>
 
-        <button
-          id={`withdraw-btn-${wallet.id}`}
+        {/* Frequency Dots */}
+        <div className="mb-6">
+          <p className="text-[10px] text-slate-400 uppercase font-bold mb-2">Withdrawal Slots</p>
+          <div className="flex gap-2">
+            {Array.from({ length: effectiveMax }).map((_, i) => (
+              <motion.div
+                key={i}
+                whileHover={{ scale: 1.2 }}
+                className={`h-3 flex-1 rounded-full transition-all ${
+                  i < wallet.usedFrequency
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                    : i >= wallet.maxFrequency
+                      ? 'bg-slate-700 border border-dashed border-emerald-500/50'
+                      : 'bg-slate-700/50'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Withdraw Button */}
+        <motion.button
+          whileHover={!isLocked && !loading ? { scale: 1.02 } : {}}
+          whileTap={!isLocked && !loading ? { scale: 0.98 } : {}}
           disabled={isLocked || loading}
           onClick={() => onWithdraw(wallet.id)}
-          className={`px-4 py-2 rounded text-[10px] font-bold tracking-widest transition-all ${
+          className={`w-full py-3 rounded-lg font-black text-sm uppercase tracking-wider transition-all relative overflow-hidden ${
             isLocked
-              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              ? 'bg-slate-700/30 text-slate-500 cursor-not-allowed border border-slate-700'
               : loading
-              ? 'bg-indigo-600/50 text-white cursor-wait'
-              : 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95'
+                ? 'bg-slate-600/50 text-slate-300 cursor-wait border border-slate-600'
+                : `bg-gradient-to-r ${walletConfig.gradient} text-white shadow-lg hover:shadow-xl border border-slate-600/30`
           }`}
         >
-          {loading ? 'PROCESSING' : isLocked ? 'LOCKED' : 'REQUEST ACCESS'}
-        </button>
-      </div>
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center justify-center gap-2"
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                />
+                Processing...
+              </motion.div>
+            ) : isLocked ? (
+              <motion.div
+                key="locked"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                Wallet Locked
+              </motion.div>
+            ) : (
+              <motion.div
+                key="ready"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center justify-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Request Disbursement
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.button>
 
-      {wallet.lastWithdrawalDate && (
-        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-[9px] font-mono opacity-50">
-          <span>TX_READY</span>
-          <span>{new Date(wallet.lastWithdrawalDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-        </div>
-      )}
+        {/* Footer Info */}
+        {wallet.lastWithdrawalDate && !isLocked && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            className="text-[9px] text-slate-400 font-mono mt-3 text-center"
+          >
+            Last: {new Date(wallet.lastWithdrawalDate).toLocaleDateString()}
+          </motion.p>
+        )}
+      </div>
     </motion.div>
   );
 };

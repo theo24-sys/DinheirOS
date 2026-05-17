@@ -4,6 +4,12 @@
   "webDir": "public",
   "server": {
     "url": "http://127.0.0.1:3000",
-    "cleartext": true
+    "cleartext": true,
+    "allowNavigation": ["127.0.0.1", "localhost"]
+  },
+  "plugins": {
+    "Preferences": {
+      "group": "dinheiros"
+    }
   }
 }

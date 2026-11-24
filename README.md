@@ -73,10 +73,11 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 3. Under **Environment Variables**, add:
    - `SUPABASE_URL`: Your Supabase Project URL.
    - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase key.
-   - `PIN_SALT`: Any random string (e.g. `my_secret_pin_salt_9281`).
    - For live M-Pesa B2C payouts: `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `DARAJA_INITIATOR_NAME`, `DARAJA_SECURITY_CREDENTIAL`, and `MPESA_ENVIRONMENT=production`.
    - `CALLBACK_URL`: Your public HTTPS app URL ending in `/api/daraja/callback` (optional; this is the default).
 4. Click **Deploy**. Vercel will deploy the site and activate the automated Monday weekly reset cron (`vercel.json`).
+
+New users choose their 4-digit PIN during account setup and use it to sign in; no `PIN_SALT` environment variable is needed. PINs are salted per user and stored as hashes. If an existing deployment already has a `PIN_SALT` value, keep that same value until each existing user signs in once; successful sign-in migrates their PIN, after which the variable can be removed. Re-run `schema.sql` before deploying this change.
 
 ---
 
@@ -92,7 +93,7 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 ---
 
 ### 3. Open the App & Set Up User 1
-1. Open your Vercel deployment URL (e.g., `https://your-dinheiros-app.vercel.app`).
+1. Open your Vercel deployment URL (default: `https://dinheir-os.vercel.app`).
 2. Because no users exist yet, the app presents the setup screen:
    - **Name:** e.g., Timothy
    - **M-Pesa Phone:** e.g., `0712345678` or `+254712345678`
@@ -104,14 +105,14 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 
 ### 4. Build the Android APK (Capacitor)
 To package into an Android app:
-1. Open [`capacitor.config.json`](capacitor.config.json) and set `server.url` to your live Vercel URL:
+1. [`capacitor.config.json`](capacitor.config.json) points to `https://dinheir-os.vercel.app` by default. If you deploy to a different URL, update `server.url` before building:
    ```json
    {
      "appId": "com.morggy.dinheiros",
      "appName": "DinheirOS",
      "webDir": "public",
      "server": {
-       "url": "https://your-dinheiros-app.vercel.app",
+       "url": "https://dinheir-os.vercel.app",
        "cleartext": false
      }
    }
@@ -122,6 +123,8 @@ To package into an Android app:
    npx cap open android
    ```
 3. In Android Studio, click **Build** → **Build APK(s)** to generate your release or debug APK.
+
+Android shows its native launch screen while the WebView starts; the in-app loading screen appears as soon as the page can run and remains visible through PIN initialization.
 
 ---
 

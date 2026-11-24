@@ -106,20 +106,33 @@ async function getUserById(id) {
   return data;
 }
 
-async function getUserByPinHash(pinHash) {
+async function getUsersForPinAuth() {
   const client = getClient();
-  if (!client) return null;
+  if (!client) return [];
   const { data, error } = await client
     .from('users')
-    .select('id, name, phone_number, is_active')
-    .eq('pin_hash', pinHash)
+    .select('id, name, phone_number, is_active, pin_hash, pin_salt')
+    .eq('is_active', true);
+  if (error) throw error;
+  return data || [];
+}
+
+async function updateUserPinCredentials(userId, pinHash, pinSalt) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const { data, error } = await client
+    .from('users')
+    .update({ pin_hash: pinHash, pin_salt: pinSalt })
+    .eq('id', userId)
     .eq('is_active', true)
+    .select('id')
     .single();
-  if (error && error.code !== 'PGRST116') throw error;
+  if (error) throw error;
   return data;
 }
 
-async function createUser(name, pinHash, phoneNumber) {
+async function createUser(name, pinHash, pinSalt, phoneNumber) {
   const client = getClient();
   if (!client) throw new Error('Supabase client not initialized');
 
@@ -131,7 +144,7 @@ async function createUser(name, pinHash, phoneNumber) {
   // 1. Insert user
   const { data: user, error: userError } = await client
     .from('users')
-    .insert([{ name, pin_hash: pinHash, phone_number: phoneNumber }])
+    .insert([{ name, pin_hash: pinHash, pin_salt: pinSalt, phone_number: phoneNumber }])
     .select()
     .single();
   if (userError) throw userError;
@@ -467,7 +480,8 @@ module.exports = {
   countUsers,
   getAllUsers,
   getUserById,
-  getUserByPinHash,
+  getUsersForPinAuth,
+  updateUserPinCredentials,
   createUser,
   getUserWallets,
   getWalletByName,

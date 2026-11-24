@@ -3,7 +3,7 @@
   "appName": "DinheirOS",
   "webDir": "public",
   "server": {
-    "url": "https://your-dinheiros-app.vercel.app",
+    "url": "https://dinheir-os.vercel.app",
     "cleartext": false
   }
 }

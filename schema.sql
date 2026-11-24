@@ -6,10 +6,14 @@ CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     pin_hash VARCHAR(64) NOT NULL UNIQUE,
+    pin_salt VARCHAR(64),
     phone_number VARCHAR(20) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS pin_salt VARCHAR(64);
 
 -- 2. Wallets Table (Scoped to user_id)
 CREATE TABLE IF NOT EXISTS wallets (

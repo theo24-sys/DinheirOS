@@ -2,10 +2,18 @@ const crypto = require('crypto');
 const db = require('./db');
 const config = require('./config');
 
-const SALT = process.env.PIN_SALT || 'DinheirOS_cloud_salt_2025';
+const LEGACY_PIN_SALT = process.env.PIN_SALT || 'DinheirOS_cloud_salt_2025';
 
-function hashPin(pin) {
-  return crypto.createHash('sha256').update(String(pin).trim() + SALT).digest('hex');
+function hashPin(pin, salt = LEGACY_PIN_SALT) {
+  return crypto.createHash('sha256').update(String(pin).trim() + salt).digest('hex');
+}
+
+function pinMatchesUser(pin, user) {
+  const salt = user.pin_salt || LEGACY_PIN_SALT;
+  const expectedHash = Buffer.from(hashPin(pin, salt), 'hex');
+  const storedHash = Buffer.from(user.pin_hash, 'hex');
+  return expectedHash.length === storedHash.length &&
+    crypto.timingSafeEqual(expectedHash, storedHash);
 }
 
 async function isConfigured() {
@@ -24,12 +32,17 @@ async function loginWithPin(pin) {
     return { success: false, status: 429, error: 'Too many failed attempts. Please wait 5 minutes.' };
   }
 
-  const pinHash = hashPin(pin);
-  const user = await db.getUserByPinHash(pinHash);
+  const users = await db.getUsersForPinAuth();
+  const user = users.find(candidate => pinMatchesUser(pin, candidate));
 
   if (!user) {
     await db.logPinAttempt(null, false);
     return { success: false, status: 401, error: 'Invalid PIN' };
+  }
+
+  if (!user.pin_salt) {
+    const pinSalt = crypto.randomBytes(32).toString('hex');
+    await db.updateUserPinCredentials(user.id, hashPin(pin, pinSalt), pinSalt);
   }
 
   // Success
@@ -64,13 +77,15 @@ async function setupUser({ name, pin, phoneNumber }) {
     return { success: false, status: 400, error: `Maximum user limit (${config.maxUsers || 5}) reached.` };
   }
 
-  const pinHash = hashPin(pin);
-  const existingWithPin = await db.getUserByPinHash(pinHash);
+  const existingUsers = await db.getUsersForPinAuth();
+  const existingWithPin = existingUsers.find(user => pinMatchesUser(pin, user));
   if (existingWithPin) {
     return { success: false, status: 400, error: 'This PIN is already in use. Please pick a unique 4-digit PIN.' };
   }
 
-  const user = await db.createUser(name.trim(), pinHash, phoneNumber.trim());
+  const pinSalt = crypto.randomBytes(32).toString('hex');
+  const pinHash = hashPin(pin, pinSalt);
+  const user = await db.createUser(name.trim(), pinHash, pinSalt, phoneNumber.trim());
   const token = crypto.randomUUID();
   await db.createSession(user.id, token);
 

@@ -711,7 +711,6 @@
         radial-gradient(120% 70% at 50% -15%, #3a1c6e 0%, rgba(58,28,110,0) 62%),
         radial-gradient(90% 55% at 100% 4%, rgba(16,185,129,0.13), transparent 62%),
         linear-gradient(165deg, #0b0820 0%, #151033 46%, #090615 100%);
-      background-attachment: fixed;
       -webkit-font-smoothing: antialiased;
       letter-spacing: -0.01em;
     }
@@ -950,6 +949,11 @@
     .toast { white-space: normal; border-radius: 16px; line-height: 1.4; font-size: 12.5px; padding: 12px 18px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
     .loader-spinner { border-top-color: #0f0c29; }
 
+    @media (max-height: 760px) and (max-width: 700px) {
+      #pinScreen { justify-content: flex-start; overflow-x: hidden; overflow-y: auto; padding: 16px 0; }
+      .auth-shell { flex-shrink: 0; margin: 0 16px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.001ms !important;
@@ -991,6 +995,9 @@
           </div>
           <div class="fingerprint-row" style="margin-top:10px;">
             <button id="passkeySetupBtn" class="fingerprint-btn" type="button" style="min-width:240px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16);display:flex;"><span class="icon">🪪</span><span>Set Up Passkey</span></button>
+          </div>
+          <div class="fingerprint-row" style="margin-top:10px;">
+            <button id="authInstallBtn" class="fingerprint-btn" type="button" style="min-width:240px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.35);display:flex;"><span class="icon">📲</span><span>Install DinheirOS</span></button>
           </div>
           <div id="attemptInfo" class="error-line"></div>
           <div id="authFooter" class="muted" style="text-align:center; margin-top: 8px; min-height: 20px;"></div>
@@ -1107,7 +1114,7 @@
                 </label>
               </div>
               <button class="settings-btn" id="addNewUserBtn" type="button" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);">+ Add Another User (Up to 5)</button>
-              <button class="settings-btn" id="settingsInstallBtn" type="button" style="background:linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.18));border:1px solid rgba(16,185,129,0.35);"><span style="margin-right:6px;">📲</span> Install DinheirOS on Android / Phone</button>
+              <button class="settings-btn" id="settingsInstallBtn" type="button" style="background:linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.18));border:1px solid rgba(16,185,129,0.35);"><span style="margin-right:6px;">📲</span> Install DinheirOS</button>
               <button class="settings-btn" type="button" onclick="lockApp()">🔒 Switch / Lock User</button>
               <button class="settings-btn" type="button" onclick="showToast('DinheirOS Cloud v2.1 (Daraja Till Enabled)', 'success')">App version (Cloud v2.1)</button>
               <button id="settingsPasskeyBtn" class="settings-btn" type="button" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;">Set Up Passkey</button>
@@ -1287,6 +1294,15 @@
       footer.style.color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--muted)';
     }
 
+    function showPinRequestError(error) {
+      console.error('PIN request failed:', error);
+      pinTemp = '';
+      updateDots();
+      const message = 'Could not reach the server. Check your connection and try again.';
+      setAuthMessage(message, 'error');
+      showToast(message, 'error');
+    }
+
     async function api(path, opts={}) {
       opts.headers = opts.headers || {};
       opts.headers['Content-Type'] = 'application/json';
@@ -1325,10 +1341,6 @@
         b.className = 'pin-btn';
         b.type = 'button';
         b.textContent = k;
-        b.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          onClick(k);
-        }, { passive: false });
         b.addEventListener('click', () => onClick(k));
         pad.appendChild(b);
       });
@@ -1437,6 +1449,7 @@
     window.addEventListener('appinstalled', () => {
       deferredInstallPrompt = null;
       hideInstallBanner();
+      syncInstallUI();
       showToast('DinheirOS installed — open it from your home screen', 'success');
     });
 
@@ -1446,26 +1459,37 @@
         return;
       }
       if (deferredInstallPrompt) {
-        deferredInstallPrompt.prompt();
         try {
+          deferredInstallPrompt.prompt();
           const choice = await deferredInstallPrompt.userChoice;
           if (choice && choice.outcome === 'accepted') hideInstallBanner();
-        } catch (err) {}
-        deferredInstallPrompt = null;
+        } catch (err) {
+          console.error('PWA install prompt failed:', err);
+          showToast('Could not open the install prompt. Try your browser menu instead.', 'warning');
+        } finally {
+          deferredInstallPrompt = null;
+        }
         return;
       }
       const ua = navigator.userAgent || '';
-      if (/Android/i.test(ua)) {
+      if (/Electron|vscode-webview/i.test(ua)) {
+        showToast('Open DinheirOS in Chrome, Edge, or Safari to install it.', 'warning');
+      } else if (/iPhone|iPad|iPod/i.test(ua)) {
+        showToast('In Safari, tap Share, then Add to Home Screen.', 'warning');
+      } else if (/Android/i.test(ua)) {
         showToast('In Chrome, tap ⋮ then "Install app" or "Add to Home screen"', 'warning');
       } else {
-        showToast('Open your browser menu, then choose "Install app" or "Add to home screen"', 'warning');
+        showToast('Choose "Install app" from your browser menu or address bar.', 'warning');
       }
     }
 
     function syncInstallUI() {
-      if (isStandaloneMode()) hideInstallBanner();
+      const standalone = isStandaloneMode();
+      if (standalone) hideInstallBanner();
+      const authInstallBtn = document.getElementById('authInstallBtn');
+      if (authInstallBtn && standalone) authInstallBtn.style.display = 'none';
       const settingsInstallBtn = document.getElementById('settingsInstallBtn');
-      if (settingsInstallBtn && isStandaloneMode()) {
+      if (settingsInstallBtn && standalone) {
         settingsInstallBtn.innerHTML = '<span style="margin-right:6px;">✓</span> Installed on this device';
       }
     }
@@ -1521,10 +1545,16 @@
           const name = (nameInput && nameInput.value.trim()) || 'Timothy';
           const phone = (phoneInput && phoneInput.value.trim()) || '0712345678';
 
-          const r = await api('/auth/setup', {
-            method: 'POST',
-            body: JSON.stringify({ name, phoneNumber: phone, pin: pinTemp })
-          });
+          let r;
+          try {
+            r = await api('/auth/setup', {
+              method: 'POST',
+              body: JSON.stringify({ name, phoneNumber: phone, pin: pinTemp })
+            });
+          } catch (err) {
+            showPinRequestError(err);
+            return;
+          }
           const j = await r.json().catch(() => ({}));
           if (r.ok && j.success) {
             saveToken(j.token);
@@ -1544,7 +1574,13 @@
           return;
         }
 
-        const r = await api('/auth/login', { method:'POST', body: JSON.stringify({ pin: pinTemp }) });
+        let r;
+        try {
+          r = await api('/auth/login', { method:'POST', body: JSON.stringify({ pin: pinTemp }) });
+        } catch (err) {
+          showPinRequestError(err);
+          return;
+        }
         const j = await r.json().catch(() => ({}));
         if (r.ok && j.success) {
           saveToken(j.token);
@@ -2188,8 +2224,10 @@
       if (settingsPasskeyBtn) settingsPasskeyBtn.addEventListener('click', setupPasskey);
       const pwaInstallBtn = document.getElementById('pwaInstallBtn');
       const settingsInstallBtn = document.getElementById('settingsInstallBtn');
+      const authInstallBtn = document.getElementById('authInstallBtn');
       if (pwaInstallBtn) pwaInstallBtn.addEventListener('click', promptInstall);
       if (settingsInstallBtn) settingsInstallBtn.addEventListener('click', promptInstall);
+      if (authInstallBtn) authInstallBtn.addEventListener('click', promptInstall);
       const refreshBtn = document.getElementById('refreshBtn');
       if (refreshBtn) refreshBtn.addEventListener('click', syncAll);
       syncInstallUI();
@@ -2224,6 +2262,11 @@
       showAuthScreen();
       updateBiometricLockUI();
     }
+
+    init().catch((err) => {
+      console.error('App initialization failed:', err);
+      setAuthMessage('App initialization failed. Refresh and try again.', 'error');
+    });
 
     const splash = document.getElementById('splash');
     setStartupStatus('Booting app...');

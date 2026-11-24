@@ -4,7 +4,7 @@ const router = express.Router();
 const db = require('./db');
 const auth = require('./auth');
 const { evaluateWithdrawal } = require('./gates');
-const { sendB2C } = require('./mpesa');
+const { sendB2C, getMpesaStatus } = require('./mpesa');
 const { resetDaily, resetWeekly } = require('./cron');
 
 // -------------------------------------------------------------
@@ -103,6 +103,15 @@ router.get('/status', auth.authMiddleware, async (req, res) => {
   }
 });
 
+// M-Pesa till / Daraja payout readiness (no secrets exposed)
+router.get('/mpesa/status', auth.authMiddleware, (req, res) => {
+  try {
+    res.json(getMpesaStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Request withdrawal from a wallet
 router.post('/withdraw', auth.authMiddleware, async (req, res) => {
   try {
@@ -128,12 +137,15 @@ router.post('/withdraw', auth.authMiddleware, async (req, res) => {
       return res.status(403).json({ error: gateCheck.reason });
     }
 
-    // 3. Trigger Safaricom M-Pesa B2C
+    // 3. Trigger Safaricom M-Pesa B2C from the till / business shortcode
+    let mpesaResult;
     try {
-      await sendB2C(numericAmount, req.user.phone_number, wallet.name);
+      mpesaResult = await sendB2C(numericAmount, req.user.phone_number, wallet.name);
     } catch (mpesaError) {
-      console.error('M-Pesa payment failed:', mpesaError);
-      return res.status(502).json({ error: 'M-Pesa transaction failed. Please try again later.' });
+      console.error('M-Pesa payment failed:', mpesaError.details || mpesaError.message);
+      return res.status(502).json({
+        error: mpesaError.message || 'M-Pesa transaction failed. Please check the till balance & Daraja credentials.'
+      });
     }
 
     // 4. Update wallet balances & counters
@@ -161,7 +173,9 @@ router.post('/withdraw', auth.authMiddleware, async (req, res) => {
       message: `Ksh ${numericAmount} released from ${wallet.name}`,
       amount: numericAmount,
       wallet: wallet.name,
-      newBalance
+      newBalance,
+      mock: Boolean(mpesaResult && mpesaResult.mock),
+      reference: (mpesaResult && (mpesaResult.ConversationID || mpesaResult.OriginatorConversationID)) || null
     });
   } catch (err) {
     console.error('Withdrawal error:', err);
@@ -200,6 +214,14 @@ router.all('/cron/reset', async (req, res) => {
     console.error('Cron reset error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// -------------------------------------------------------------
+// Safaricom Daraja Webhooks & Callbacks
+// -------------------------------------------------------------
+router.all(['/daraja/callback', '/daraja/result', '/daraja/timeout'], (req, res) => {
+  console.log('[DARAJA CALLBACK]', JSON.stringify(req.body));
+  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
 });
 
 module.exports = router;

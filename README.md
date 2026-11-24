@@ -124,3 +124,5 @@ To package into an Android app:
 - `cron.js`: Monday midnight budget reset and daily counter reset logic.
 - `vercel.json`: Vercel serverless routing and weekly reset cron trigger.
 - `public/index.html`: Glassmorphic single-page frontend with WebAuthn / Passkey support.
+- `public/brand-logo.jpg`: Master DinheirOS logo used to generate the web, PWA, and Android brand assets.
+- On Windows, regenerate those assets with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icons.ps1`.

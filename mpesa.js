@@ -1,5 +1,8 @@
 const axios = require('axios');
 
+const MIN_B2C_AMOUNT = 10;
+const MAX_B2C_AMOUNT = 250000;
+
 let tokenCache = { token: null, expiry: 0, baseUrl: '' };
 
 function clean(value) {
@@ -23,11 +26,14 @@ function pickEnv(...names) {
  * accepted so an existing Vercel setup keeps working unchanged.
  */
 function getDarajaConfig() {
-  const env = (pickEnv('DARAJA_ENV', 'MPESA_ENV') || 'production').toLowerCase();
+  const env = (pickEnv('DARAJA_ENV', 'MPESA_ENV', 'MPESA_ENVIRONMENT') || 'production').toLowerCase();
   const isSandbox = env === 'sandbox' || env === 'test' || env === 'uat';
   const baseUrl = pickEnv('DARAJA_BASE_URL') || (isSandbox
     ? 'https://sandbox.safaricom.co.ke'
     : 'https://api.safaricom.co.ke');
+  const legacyCallbackUrl = pickEnv('CALLBACK_URL', 'DARAJA_CALLBACK_URL', 'MPESA_CALLBACK_URL');
+  const callbackUrl = pickEnv('DARAJA_RESULT_URL') || legacyCallbackUrl ||
+    'https://dinheir-os.vercel.app/api/daraja/callback';
 
   return {
     isSandbox,
@@ -49,8 +55,9 @@ function getDarajaConfig() {
       'DARAJA_B2C_SECURITY_CREDENTIAL',
       'MPESA_SECURITY_CREDENTIAL'
     ),
-    callbackUrl: pickEnv('CALLBACK_URL', 'DARAJA_CALLBACK_URL', 'MPESA_CALLBACK_URL') ||
-      'https://dinheir-os.vercel.app/api/daraja/callback',
+    callbackUrl,
+    queueTimeOutUrl: pickEnv('DARAJA_QUEUE_TIMEOUT_URL') || legacyCallbackUrl ||
+      'https://dinheir-os.vercel.app/api/daraja/timeout',
     commandId: pickEnv('DARAJA_COMMAND_ID') || 'BusinessPayment',
     remarks: pickEnv('DARAJA_REMARKS') || 'DinheirOS payout',
     occasion: pickEnv('DARAJA_OCCASION') || 'Wallet withdrawal',
@@ -87,8 +94,9 @@ function getMpesaStatus() {
   const missing = missingSettings(cfg);
   const configured = missing.length === 0;
   const mode = configured ? 'live' : (allowsMock(cfg) ? 'mock' : 'unconfigured');
-  const callbackIsHttps = /^https:\/\//i.test(cfg.callbackUrl) &&
-    !/localhost|127\.0\.0\.1/i.test(cfg.callbackUrl);
+  const callbackIsHttps = [cfg.callbackUrl, cfg.queueTimeOutUrl].every(url =>
+    /^https:\/\//i.test(url) && !/localhost|127\.0\.0\.1/i.test(url)
+  );
 
   return {
     configured,
@@ -161,21 +169,40 @@ function friendlyDarajaError(errorData, fallback) {
   return messages[code] || detail || fallback;
 }
 
+function makeB2CRequestError(error) {
+  const errorData = error.response && error.response.data;
+  const status = error.response && error.response.status;
+  const result = new Error(friendlyDarajaError(errorData, error.message || 'Daraja payout request failed.'));
+  result.details = errorData || null;
+  result.status = status || 502;
+  result.outcomeUnknown = !status || status >= 500;
+  return result;
+}
+
+function callbackUrlWithOriginatorId(callbackUrl, originatorConversationId) {
+  const url = new URL(callbackUrl);
+  url.searchParams.set('originatorConversationID', originatorConversationId);
+  return url.toString();
+}
+
 /**
  * Sends an M-Pesa B2C disbursement from your till / shortcode to the user's phone.
- * Throws a descriptive error when the payout cannot be initiated, so the wallet
- * balance is never touched for a transfer that never left the till.
+ * The wallet reservation is managed by the caller until a Daraja callback confirms
+ * the final outcome.
  */
-async function sendB2C(amount, recipientPhone, walletName) {
+async function sendB2C(amount, recipientPhone, walletName, originatorConversationId) {
   const cfg = getDarajaConfig();
   const normalizedPhone = normalizePhoneNumber(recipientPhone);
-  const payoutAmount = Math.round(Number(amount));
+  const payoutAmount = Number(amount);
 
-  if (!Number.isFinite(payoutAmount) || payoutAmount <= 0) {
-    throw new Error('Invalid payout amount.');
+  if (!Number.isSafeInteger(payoutAmount) || payoutAmount < MIN_B2C_AMOUNT || payoutAmount > MAX_B2C_AMOUNT) {
+    throw new Error(`Payout amount must be a whole number between Ksh ${MIN_B2C_AMOUNT} and Ksh ${MAX_B2C_AMOUNT}.`);
   }
   if (!isValidMsisdn(normalizedPhone)) {
     throw new Error(`Invalid M-Pesa number "${recipientPhone}". Use a Safaricom number like 0712 345 678.`);
+  }
+  if (!originatorConversationId || String(originatorConversationId).length > 20) {
+    throw new Error('A valid OriginatorConversationID is required for a B2C payout.');
   }
 
   const missing = missingSettings(cfg);
@@ -183,7 +210,7 @@ async function sendB2C(amount, recipientPhone, walletName) {
   // Mock mode is only ever allowed outside production or when explicitly enabled.
   if (missing.length > 0) {
     if (allowsMock(cfg)) {
-      console.log(`[MOCK M-PESA] Would send Ksh ${payoutAmount} from ${walletName} to ${normalizedPhone} (missing: ${missing.join(', ')})`);
+      console.log('[MOCK M-PESA] Simulated payout; no money moved.');
       return {
         ResponseCode: '0',
         ResponseDescription: 'Accepted (MOCK — no money moved)',
@@ -201,73 +228,68 @@ async function sendB2C(amount, recipientPhone, walletName) {
     throw new Error(`DARAJA_SHORTCODE "${cfg.shortcode}" is not a valid M-Pesa shortcode. Use the numeric business shortcode approved for B2C payouts.`);
   }
 
+  const resultUrl = callbackUrlWithOriginatorId(cfg.callbackUrl, originatorConversationId);
+  const queueTimeOutUrl = callbackUrlWithOriginatorId(cfg.queueTimeOutUrl, originatorConversationId);
+  if (!/^https:\/\//i.test(resultUrl) || !/^https:\/\//i.test(queueTimeOutUrl)) {
+    throw new Error('CALLBACK_URL must be a public HTTPS URL for Daraja B2C callbacks.');
+  }
+
+  const payload = {
+    OriginatorConversationID: originatorConversationId,
+    InitiatorName: cfg.initiatorName,
+    SecurityCredential: cfg.securityCredential,
+    CommandID: cfg.commandId,
+    Amount: payoutAmount,
+    PartyA: cfg.shortcode,
+    PartyB: normalizedPhone,
+    Remarks: `${cfg.remarks} (${walletName})`.slice(0, 100),
+    QueueTimeOutURL: queueTimeOutUrl,
+    ResultURL: resultUrl,
+    Occassion: cfg.occasion.slice(0, 100)
+  };
+  const endpoint = `${cfg.baseUrl}/mpesa/b2c/v3/paymentrequest`;
+  let token = await getAccessToken();
+  let response;
+
   try {
-    const token = await getAccessToken();
-    const payload = {
-      InitiatorName: cfg.initiatorName,
-      SecurityCredential: cfg.securityCredential,
-      CommandID: cfg.commandId,
-      Amount: payoutAmount,
-      PartyA: cfg.shortcode,
-      PartyB: normalizedPhone,
-      Remarks: `${cfg.remarks} (${walletName})`.slice(0, 100),
-      QueueTimeOutURL: cfg.callbackUrl,
-      ResultURL: cfg.callbackUrl,
-      Occassion: cfg.occasion.slice(0, 100)
-    };
+    response = await axios.post(endpoint, payload, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 20000
+    });
+  } catch (error) {
+    if (!error.response || error.response.status !== 401) {
+      throw makeB2CRequestError(error);
+    }
 
-    console.log(`[DARAJA] B2C Ksh ${payload.Amount} from shortcode ${payload.PartyA} to ${payload.PartyB}`);
+    try {
+      token = await getAccessToken(true);
+    } catch {
+      const rejected = makeB2CRequestError(error);
+      rejected.outcomeUnknown = false;
+      throw rejected;
+    }
 
-    const response = await axios.post(
-      `${cfg.baseUrl}/mpesa/b2c/v1/paymentrequest`,
-      payload,
-      {
+    try {
+      response = await axios.post(endpoint, payload, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 20000
-      }
-    );
+      });
+    } catch (retryError) {
+      throw makeB2CRequestError(retryError);
+    }
+  }
 
-    console.log('[DARAJA RESPONSE]', response.data);
-
-    if (response.data && response.data.ResponseCode && response.data.ResponseCode !== '0') {
+  const responseCode = response.data && response.data.ResponseCode;
+  if (String(responseCode) !== '0') {
+    if (responseCode !== undefined && responseCode !== null) {
       throw new Error(friendlyDarajaError(response.data, 'Daraja refused the payout request.'));
     }
-
-    return response.data;
-  } catch (error) {
-    // A stale token can surface as 401 — retry once with a fresh one.
-    if (error.response && error.response.status === 401) {
-      try {
-        const token = await getAccessToken(true);
-        const retry = await axios.post(
-          `${cfg.baseUrl}/mpesa/b2c/v1/paymentrequest`,
-          {
-            InitiatorName: cfg.initiatorName,
-            SecurityCredential: cfg.securityCredential,
-            CommandID: cfg.commandId,
-            Amount: payoutAmount,
-            PartyA: cfg.shortcode,
-            PartyB: normalizedPhone,
-            Remarks: `${cfg.remarks} (${walletName})`.slice(0, 100),
-            QueueTimeOutURL: cfg.callbackUrl,
-            ResultURL: cfg.callbackUrl,
-            Occassion: cfg.occasion.slice(0, 100)
-          },
-          { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
-        );
-        return retry.data;
-      } catch (retryError) {
-        error = retryError;
-      }
-    }
-
-    const errorData = error.response && error.response.data;
-    console.error('M-Pesa B2C transfer error:', error.message, errorData || '');
-    const friendly = new Error(friendlyDarajaError(errorData, error.message));
-    friendly.details = errorData || null;
-    friendly.status = error.response ? error.response.status : 502;
-    throw friendly;
+    const error = new Error('Daraja returned an incomplete payout response; awaiting callback confirmation.');
+    error.outcomeUnknown = true;
+    throw error;
   }
+
+  return response.data;
 }
 
 module.exports = {
@@ -275,5 +297,7 @@ module.exports = {
   getAccessToken,
   normalizePhoneNumber,
   getDarajaConfig,
-  getMpesaStatus
+  getMpesaStatus,
+  MIN_B2C_AMOUNT,
+  MAX_B2C_AMOUNT
 };

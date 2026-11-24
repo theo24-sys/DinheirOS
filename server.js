@@ -5,6 +5,7 @@ const path = require('path');
 
 const routes = require('./routes');
 const db = require('./db');
+const { getMpesaStatus } = require('./mpesa');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,7 +47,7 @@ if (require.main === module) {
     console.log(`===============================================`);
     console.log(`  DinheirOS Cloud Server listening on port ${PORT}`);
     console.log(`  Supabase: ${process.env.SUPABASE_URL ? 'Configured' : 'NOT SET'}`);
-    console.log(`  M-Pesa:   ${process.env.DARAJA_CONSUMER_KEY ? 'Live Daraja' : 'MOCK Mode'}`);
+    console.log(`  M-Pesa:   ${getMpesaStatus().mode}`);
     console.log(`===============================================`);
   });
 }

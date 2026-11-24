@@ -60,9 +60,10 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 1. Create a free account at [Supabase](https://supabase.com) and create a new project.
 2. Go to the **SQL Editor** in the Supabase dashboard.
 3. Open [`schema.sql`](schema.sql), copy its contents, paste it into the SQL editor, and click **Run**.
+   Re-run this file after pulling updates that add database columns or payout functions.
 4. Go to **Project Settings** → **API** and copy:
    - `Project URL`
-   - `service_role` secret (or `anon` public key)
+   - `service_role` secret or secret API key. Do not use the `anon` / publishable key for the server.
 
 ---
 
@@ -73,8 +74,20 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
    - `SUPABASE_URL`: Your Supabase Project URL.
    - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase key.
    - `PIN_SALT`: Any random string (e.g. `my_secret_pin_salt_9281`).
-   - *(Optional)* Safaricom Daraja B2C credentials if live payments are enabled. (If left blank, it runs in **MOCK mode** safely for testing).
+   - For live M-Pesa B2C payouts: `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `DARAJA_INITIATOR_NAME`, `DARAJA_SECURITY_CREDENTIAL`, and `MPESA_ENVIRONMENT=production`.
+   - `CALLBACK_URL`: Your public HTTPS app URL ending in `/api/daraja/callback` (optional; this is the default).
 4. Click **Deploy**. Vercel will deploy the site and activate the automated Monday weekly reset cron (`vercel.json`).
+
+---
+
+### M-Pesa B2C payout notes
+
+- The shortcode must be enabled for Safaricom B2C payouts; a consumer Till and the Lipa na M-Pesa passkey are not substitutes.
+- `DARAJA_INITIATOR_NAME` and `DARAJA_SECURITY_CREDENTIAL` are the B2C initiator name and its encrypted credential from Daraja. `MPESA_PASSKEY` is for STK Push and is not used for B2C.
+- The app accepts whole-number payouts from Ksh 10 to Ksh 250,000, matching the documented B2C per-transaction limits. The recipient is the phone number saved on the user profile, so it can be the same registered M-Pesa number each time.
+- Payouts use Daraja B2C v3. A request appears as **pending** until Safaricom sends its result callback. Funds are reserved on request, released from the reservation on success, and returned on a confirmed failure. If the provider response is uncertain, funds remain reserved until the callback resolves it.
+- The app blocks another withdrawal from the same wallet while a payout is pending or uncertain, so retrying cannot accidentally create a second payout.
+- Before deploying this version, run the updated `schema.sql` in Supabase so the transaction status fields and atomic reservation/settlement functions exist.
 
 ---
 

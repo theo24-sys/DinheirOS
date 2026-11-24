@@ -556,12 +556,14 @@
 
     .history-row.approved { border-left-color: var(--success); }
     .history-row.denied { border-left-color: var(--danger); }
+    .history-row.pending { border-left-color: #fbbf24; }
     .history-left { min-width: 0; }
     .history-title { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; margin-bottom: 2px; }
     .history-subtitle { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .status-pill { padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; flex: 0 0 auto; }
     .status-pill.approved { background: rgba(16,185,129,0.18); color: #baf7e6; }
     .status-pill.denied { background: rgba(239,68,68,0.18); color: #ffd0d0; }
+    .status-pill.pending { background: rgba(251,191,36,0.18); color: #fde68a; }
 
     .settings-list { display: grid; gap: 10px; }
     .settings-btn { width: 100%; height: 52px; border-radius: 18px; background: rgba(255,255,255,0.08); color: #fff; text-align: left; padding: 0 16px; font-weight: 700; border: 1px solid rgba(255,255,255,0.12); }
@@ -685,6 +687,7 @@
     .status-chip { padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
     .status-chip.approved { background: rgba(16,185,129,0.18); color: #c8fff0; }
     .status-chip.denied { background: rgba(239,68,68,0.18); color: #ffd2d2; }
+    .status-chip.pending { background: rgba(251,191,36,0.18); color: #fde68a; }
     .tab-panel .card-shell:first-child { margin-top: 0; }
 
     @media (max-width: 430px) {
@@ -1763,9 +1766,15 @@
         });
         const j = await r.json().catch(() => ({}));
         if (r.ok && j.success) {
-          showToast(j.mock
-            ? `Ksh ${amount} simulated — test mode, no money moved`
-            : `✅ Ksh ${amount} sent from your till to ${(currentUser && currentUser.phoneNumber) || 'M-Pesa'}`, 'success');
+          if (j.mock) {
+            showToast(`Ksh ${amount} simulated — test mode, no money moved`, 'success');
+          } else if (j.status === 'unknown') {
+            showToast(j.message || 'Payout status is uncertain. Funds remain reserved pending confirmation.', 'warning');
+          } else if (j.status === 'pending') {
+            showToast(j.message || `Ksh ${amount} payout requested; awaiting Safaricom confirmation.`, 'warning');
+          } else {
+            showToast(`✅ Ksh ${amount} sent from your till to ${(currentUser && currentUser.phoneNumber) || 'M-Pesa'}`, 'success');
+          }
           await loadWallets();
           await loadHistory();
         } else {
@@ -1923,13 +1932,27 @@
         }
         const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19.5 7"/></svg>';
         const crossIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10"/><path d="M17 7 7 17"/></svg>';
+        const pendingIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
         list.innerHTML = rows.map(row => {
           const isPayout = row.type === 'withdraw';
-          return '<div class="history-row ' + (isPayout ? 'approved' : 'denied') + '">' +
-            '<div class="history-icon" ' + (isPayout ? '' : 'style="background:rgba(239,68,68,0.14);color:#fca5a5;"') + '>' + (isPayout ? checkIcon : crossIcon) + '</div>' +
+          const status = row.status || 'completed';
+          const isPending = isPayout && (status === 'pending' || status === 'unknown');
+          const isFailed = isPayout && status === 'failed';
+          const rowClass = isPending ? 'pending' : (isFailed ? 'denied' : (isPayout ? 'approved' : 'denied'));
+          const icon = isPending ? pendingIcon : (isPayout ? checkIcon : crossIcon);
+          const iconStyle = isPending
+            ? 'style="background:rgba(251,191,36,0.14);color:#fde68a;"'
+            : ((isFailed || !isPayout) ? 'style="background:rgba(239,68,68,0.14);color:#fca5a5;"' : '');
+          const statusText = !isPayout ? 'Activity' : (
+            status === 'pending' ? 'Awaiting Safaricom confirmation' :
+            status === 'unknown' ? 'Status not confirmed — funds reserved' :
+            status === 'failed' ? 'Failed — funds returned' : 'Completed'
+          );
+          return '<div class="history-row ' + rowClass + '">' +
+            '<div class="history-icon" ' + iconStyle + '>' + icon + '</div>' +
             '<div class="history-left">' +
               '<div class="history-title">' + (row.wallet_name || row.wallet || 'Wallet') + '</div>' +
-              '<div class="history-subtitle">' + new Date(row.timestamp).toLocaleString() + '</div>' +
+              '<div class="history-subtitle">' + new Date(row.timestamp).toLocaleString() + ' · ' + statusText + '</div>' +
             '</div>' +
             '<div class="history-amount">Ksh ' + row.amount + '</div>' +
           '</div>';
@@ -1937,15 +1960,27 @@
 
         const recentActivity = document.getElementById('recentActivity');
         if (recentActivity) {
-          recentActivity.innerHTML = rows.slice(0, 3).map(row => `
-            <div class="recent-item">
-              <div class="left">
-                <div class="title">${row.wallet_name || row.wallet || 'Wallet'}</div>
-                <div class="sub">${new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+          recentActivity.innerHTML = rows.slice(0, 3).map(row => {
+            const isPayout = row.type === 'withdraw';
+            const status = row.status || 'completed';
+            const isPending = isPayout && (status === 'pending' || status === 'unknown');
+            const isFailed = isPayout && status === 'failed';
+            const statusClass = isPending ? 'pending' : (isFailed ? 'denied' : 'approved');
+            const statusLabel = !isPayout ? 'Activity' : (
+              status === 'pending' ? 'Awaiting confirmation' :
+              status === 'unknown' ? 'Status uncertain' :
+              status === 'failed' ? 'Failed — refunded' : 'Completed'
+            );
+            return `
+              <div class="recent-item">
+                <div class="left">
+                  <div class="title">${row.wallet_name || row.wallet || 'Wallet'}</div>
+                  <div class="sub">${new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${statusLabel}</div>
+                </div>
+                <div class="status-chip ${statusClass}">Ksh ${row.amount}</div>
               </div>
-              <div class="status-chip approved">Ksh ${row.amount}</div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
         }
       } catch (err) {
         list.innerHTML = '<div style="color:#ef4444;text-align:center;padding:16px;">Error loading history</div>';

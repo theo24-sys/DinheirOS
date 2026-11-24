@@ -3,7 +3,7 @@ const config = require('./config');
 
 function getSupabaseConfig() {
   let url = process.env.SUPABASE_URL || '';
-  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
   // Strip accidental quotes if user copy-pasted with quotes e.g. "https://..."
   url = String(url).trim().replace(/^["']|["']$/g, '');
@@ -26,6 +26,20 @@ function getSupabaseConfig() {
   return { url, key };
 }
 
+function isPublicSupabaseKey(key) {
+  if (key.startsWith('sb_publishable_')) return true;
+
+  const payload = key.split('.')[1];
+  if (!payload) return false;
+
+  try {
+    const encodedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(Buffer.from(encodedPayload, 'base64').toString('utf8')).role === 'anon';
+  } catch {
+    return false;
+  }
+}
+
 let supabase = null;
 
 function getClient() {
@@ -37,7 +51,11 @@ function getClient() {
   }
 
   if (!key || key.includes('your-supabase-service-role')) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured. Please add your Supabase key in Vercel Environment Variables.');
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured. Add the Supabase service_role or secret API key in Vercel Environment Variables.');
+  }
+
+  if (isPublicSupabaseKey(key)) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY must be a server-side service_role or secret API key, not an anon or publishable key.');
   }
 
   try {
@@ -202,6 +220,84 @@ async function createTransaction(userId, walletId, type, amount, note) {
   return data;
 }
 
+async function reserveWalletWithdrawal(userId, walletId, amount, originatorConversationId, note) {
+  const client = getClient();
+  const { data, error } = await client.rpc('reserve_wallet_withdrawal', {
+    p_user_id: userId,
+    p_wallet_id: walletId,
+    p_amount: amount,
+    p_originator_conversation_id: originatorConversationId,
+    p_note: note
+  });
+  if (error) throw error;
+
+  const reservation = Array.isArray(data) ? data[0] : data;
+  if (!reservation) {
+    throw new Error('Wallet reservation did not return a transaction.');
+  }
+  return reservation;
+}
+
+async function saveWithdrawalConversationId(originatorConversationId, conversationId) {
+  if (!conversationId) return;
+  const client = getClient();
+  const { error } = await client
+    .from('transactions')
+    .update({ conversation_id: conversationId })
+    .eq('originator_conversation_id', originatorConversationId)
+    .in('status', ['pending', 'unknown']);
+  if (error) throw error;
+}
+
+async function markWithdrawalUnknown(originatorConversationId, statusNote) {
+  const client = getClient();
+  const { data, error } = await client
+    .from('transactions')
+    .update({
+      status: 'unknown',
+      status_note: String(statusNote || 'Waiting for Safaricom confirmation').slice(0, 250)
+    })
+    .eq('originator_conversation_id', originatorConversationId)
+    .in('status', ['pending', 'unknown'])
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+
+  if (!data) {
+    const { data: transaction, error: lookupError } = await client
+      .from('transactions')
+      .select('status')
+      .eq('originator_conversation_id', originatorConversationId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!transaction) throw new Error('Payout transaction not found.');
+  }
+}
+
+async function finishWalletWithdrawal({
+  originatorConversationId,
+  success,
+  conversationId = null,
+  transactionReceipt = null,
+  statusNote = null
+}) {
+  const client = getClient();
+  const { data, error } = await client.rpc('finish_wallet_withdrawal', {
+    p_originator_conversation_id: originatorConversationId,
+    p_success: success,
+    p_conversation_id: conversationId,
+    p_transaction_receipt: transactionReceipt,
+    p_status_note: statusNote
+  });
+  if (error) throw error;
+
+  const settlement = Array.isArray(data) ? data[0] : data;
+  if (!settlement) {
+    throw new Error('Payout settlement did not return a transaction status.');
+  }
+  return settlement;
+}
+
 async function getUserTransactions(userId, limit = 20) {
   const client = getClient();
   if (!client) return [];
@@ -215,6 +311,8 @@ async function getUserTransactions(userId, limit = 20) {
       amount,
       timestamp,
       note,
+      status,
+      transaction_receipt,
       wallets ( name )
     `)
     .eq('user_id', userId)
@@ -230,7 +328,9 @@ async function getUserTransactions(userId, limit = 20) {
     type: tx.type,
     amount: tx.amount,
     timestamp: tx.timestamp,
-    note: tx.note
+    note: tx.note,
+    status: tx.status || 'completed',
+    transaction_receipt: tx.transaction_receipt
   }));
 }
 
@@ -373,6 +473,10 @@ module.exports = {
   getWalletByName,
   updateWallet,
   createTransaction,
+  reserveWalletWithdrawal,
+  saveWithdrawalConversationId,
+  markWithdrawalUnknown,
+  finishWalletWithdrawal,
   getUserTransactions,
   createSession,
   validateSession,

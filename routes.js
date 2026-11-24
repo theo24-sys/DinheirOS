@@ -1,10 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 
 const db = require('./db');
 const auth = require('./auth');
 const { evaluateWithdrawal } = require('./gates');
-const { sendB2C, getMpesaStatus } = require('./mpesa');
+const {
+  sendB2C,
+  getMpesaStatus,
+  MIN_B2C_AMOUNT,
+  MAX_B2C_AMOUNT
+} = require('./mpesa');
 const { resetDaily, resetWeekly } = require('./cron');
 
 // -------------------------------------------------------------
@@ -120,9 +126,11 @@ router.post('/withdraw', auth.authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Wallet name and amount are required' });
     }
 
-    const numericAmount = Math.round(Number(amount));
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      return res.status(400).json({ error: 'Invalid amount requested' });
+    const numericAmount = Number(amount);
+    if (!Number.isSafeInteger(numericAmount) || numericAmount < MIN_B2C_AMOUNT || numericAmount > MAX_B2C_AMOUNT) {
+      return res.status(400).json({
+        error: `Amount must be a whole number between Ksh ${MIN_B2C_AMOUNT} and Ksh ${MAX_B2C_AMOUNT}.`
+      });
     }
 
     // 1. Fetch user's wallet
@@ -137,45 +145,118 @@ router.post('/withdraw', auth.authMiddleware, async (req, res) => {
       return res.status(403).json({ error: gateCheck.reason });
     }
 
-    // 3. Trigger Safaricom M-Pesa B2C from the till / business shortcode
+    // Reserve wallet funds and quota atomically before contacting Daraja.
+    const originatorConversationId = crypto.randomBytes(10).toString('hex').slice(0, 19);
+    let reservation;
+    try {
+      reservation = await db.reserveWalletWithdrawal(
+        req.user.id,
+        wallet.id,
+        numericAmount,
+        originatorConversationId,
+        `Withdrawal requested for ${req.user.phone_number}`
+      );
+    } catch (error) {
+      if (/Daily limit|Weekly access quota|Insufficient allocation|Wallet not found|previous payout is still awaiting/i.test(error.message || '')) {
+        return res.status(409).json({ error: error.message });
+      }
+      console.error('Could not reserve wallet funds:', error.message);
+      return res.status(503).json({ error: 'Could not reserve wallet funds. Please try again.' });
+    }
+
+    // Submit the payout. Its reservation stays in place until the callback settles it.
     let mpesaResult;
     try {
-      mpesaResult = await sendB2C(numericAmount, req.user.phone_number, wallet.name);
+      mpesaResult = await sendB2C(
+        numericAmount,
+        req.user.phone_number,
+        wallet.name,
+        originatorConversationId
+      );
     } catch (mpesaError) {
-      console.error('M-Pesa payment failed:', mpesaError.details || mpesaError.message);
+      console.error('M-Pesa payout initiation failed:', {
+        originatorConversationId,
+        message: mpesaError.message,
+        outcomeUnknown: Boolean(mpesaError.outcomeUnknown)
+      });
+
+      if (mpesaError.outcomeUnknown) {
+        try {
+          await db.markWithdrawalUnknown(
+            originatorConversationId,
+            'Daraja response was inconclusive; wallet funds remain reserved pending callback.'
+          );
+        } catch (error) {
+          console.error('Could not mark uncertain payout:', originatorConversationId, error.message);
+        }
+        return res.status(202).json({
+          success: true,
+          status: 'unknown',
+          message: 'Safaricom has not confirmed the payout yet. The amount is reserved; check transaction history for updates.',
+          amount: numericAmount,
+          wallet: wallet.name,
+          reference: originatorConversationId
+        });
+      }
+
+      try {
+        await db.finishWalletWithdrawal({
+          originatorConversationId,
+          success: false,
+          statusNote: mpesaError.message || 'Daraja rejected the payout request.'
+        });
+      } catch (error) {
+        console.error('Could not refund rejected payout:', originatorConversationId, error.message);
+        return res.status(503).json({
+          error: 'Safaricom rejected the request, but the wallet refund is awaiting reconciliation.',
+          status: 'pending',
+          reference: originatorConversationId
+        });
+      }
+
       return res.status(502).json({
-        error: mpesaError.message || 'M-Pesa transaction failed. Please check the till balance & Daraja credentials.'
+        error: mpesaError.message || 'M-Pesa transaction failed. The reserved amount has been returned.',
+        status: 'failed',
+        refunded: true
       });
     }
 
-    // 4. Update wallet balances & counters
-    const newUsedToday = (wallet.used_today || 0) + 1;
-    const newUsedThisWeek = (wallet.used_this_week || 0) + 1;
-    const newBalance = wallet.balance - numericAmount;
+    if (mpesaResult && mpesaResult.mock) {
+      const settlement = await db.finishWalletWithdrawal({
+        originatorConversationId,
+        success: true
+      });
+      return res.json({
+        success: true,
+        status: settlement.final_status,
+        message: `Ksh ${numericAmount} simulated from ${wallet.name}`,
+        amount: numericAmount,
+        wallet: wallet.name,
+        newBalance: reservation.wallet_balance,
+        mock: true,
+        reference: originatorConversationId
+      });
+    }
 
-    await db.updateWallet(wallet.id, {
-      used_today: newUsedToday,
-      used_this_week: newUsedThisWeek,
-      balance: newBalance
-    });
+    try {
+      await db.saveWithdrawalConversationId(
+        originatorConversationId,
+        mpesaResult && mpesaResult.ConversationID
+      );
+    } catch (error) {
+      // The callback can still settle by OriginatorConversationID; do not refund an accepted request.
+      console.error('Could not store Daraja conversation ID:', originatorConversationId, error.message);
+    }
 
-    // 5. Record immutable transaction log
-    await db.createTransaction(
-      req.user.id,
-      wallet.id,
-      'withdraw',
-      numericAmount,
-      `Passed all security gates. Sent to ${req.user.phone_number}`
-    );
-
-    res.json({
+    return res.status(202).json({
       success: true,
-      message: `Ksh ${numericAmount} released from ${wallet.name}`,
+      status: 'pending',
+      message: `Ksh ${numericAmount} payout requested. The amount is reserved until Safaricom confirms the result.`,
       amount: numericAmount,
       wallet: wallet.name,
-      newBalance,
-      mock: Boolean(mpesaResult && mpesaResult.mock),
-      reference: (mpesaResult && (mpesaResult.ConversationID || mpesaResult.OriginatorConversationID)) || null
+      newBalance: reservation.wallet_balance,
+      mock: false,
+      reference: originatorConversationId
     });
   } catch (err) {
     console.error('Withdrawal error:', err);
@@ -219,9 +300,57 @@ router.all('/cron/reset', async (req, res) => {
 // -------------------------------------------------------------
 // Safaricom Daraja Webhooks & Callbacks
 // -------------------------------------------------------------
-router.all(['/daraja/callback', '/daraja/result', '/daraja/timeout'], (req, res) => {
-  console.log('[DARAJA CALLBACK]', JSON.stringify(req.body));
-  res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+router.post(['/daraja/callback', '/daraja/result', '/daraja/timeout'], async (req, res) => {
+  const body = req.body || {};
+  const result = body.Result || {};
+  const originatorConversationId =
+    result.OriginatorConversationID ||
+    body.OriginatorConversationID ||
+    (req.query && req.query.originatorConversationID);
+
+  if (!originatorConversationId) {
+    console.error('Daraja callback did not include an OriginatorConversationID.');
+    return res.status(400).json({ ResultCode: 1, ResultDesc: 'OriginatorConversationID is required' });
+  }
+
+  try {
+    if (result.ResultCode === undefined || result.ResultCode === null) {
+      await db.markWithdrawalUnknown(
+        originatorConversationId,
+        'Daraja queue timeout callback received; awaiting a final result.'
+      );
+      return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
+
+    const resultCode = Number(result.ResultCode);
+    if (!Number.isFinite(resultCode)) {
+      await db.markWithdrawalUnknown(
+        originatorConversationId,
+        'Daraja returned an unrecognized result; awaiting confirmation.'
+      );
+      return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+    }
+
+    const parameters = result.ResultParameters && result.ResultParameters.ResultParameter;
+    const transactionReceipt = Array.isArray(parameters)
+      ? (parameters.find(parameter => parameter.Key === 'TransactionReceipt') || {}).Value
+      : null;
+
+    await db.finishWalletWithdrawal({
+      originatorConversationId,
+      success: resultCode === 0,
+      conversationId: result.ConversationID || null,
+      transactionReceipt: transactionReceipt || null,
+      statusNote: resultCode === 0
+        ? null
+        : (result.ResultDesc || `Daraja payout failed with result code ${resultCode}.`)
+    });
+
+    return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    console.error('Could not reconcile Daraja callback:', originatorConversationId, error.message);
+    return res.status(503).json({ ResultCode: 1, ResultDesc: 'Payout callback could not be saved' });
+  }
 });
 
 module.exports = router;

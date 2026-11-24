@@ -9,6 +9,12 @@ function getSupabaseConfig() {
   url = String(url).trim().replace(/^["']|["']$/g, '');
   key = String(key).trim().replace(/^["']|["']$/g, '');
 
+  // Auto-detect and convert if user pasted postgresql://... connection string
+  const postgresMatch = url.match(/@db\.([a-z0-9]+)\.supabase\.co/i);
+  if (postgresMatch) {
+    url = `https://${postgresMatch[1]}.supabase.co`;
+  }
+
   // Add https:// if user entered domain without protocol
   if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://' + url;

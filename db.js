@@ -1,152 +1,351 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+const config = require('./config');
 
-const DB_PATH = path.join(__dirname, 'fedhaos.db');
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
-let db;
+let supabase = null;
 
-async function getDb() {
-  if (db) return db;
-  const SQL = await initSqlJs();
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
-  } else {
-    db = new SQL.Database();
+function getClient() {
+  if (supabase) return supabase;
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.warn('[DB WARNING] SUPABASE_URL or SUPABASE_KEY not configured. DB operations will fail until set.');
+    return null;
   }
-
-  // Initialize tables if they don't exist
-  db.run(`
-    CREATE TABLE IF NOT EXISTS wallets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      weekly_amount INTEGER NOT NULL,
-      daily_limit INTEGER NOT NULL,
-      weekly_max_count INTEGER NOT NULL,
-      rollover BOOLEAN NOT NULL,
-      used_today INTEGER DEFAULT 0,
-      used_this_week INTEGER DEFAULT 0,
-      balance INTEGER DEFAULT 0
-    );
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS withdrawals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wallet_id INTEGER NOT NULL,
-      amount INTEGER NOT NULL,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(wallet_id) REFERENCES wallets(id)
-    );
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wallet_id INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-      note TEXT,
-      FOREIGN KEY(wallet_id) REFERENCES wallets(id)
-    );
-  `);
-
-  // Auth-related tables
-  db.run(`CREATE TABLE IF NOT EXISTS pin (
-    id INTEGER PRIMARY KEY,
-    hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY,
-    token TEXT UNIQUE NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_active DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS pin_attempts (
-    id INTEGER PRIMARY KEY,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    success INTEGER DEFAULT 0
-  )`);
-
-  saveDb();
-
-  return db;
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false }
+  });
+  return supabase;
 }
 
-function saveDb() {
-  if (!db) return;
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+// -------------------------------------------------------------
+// User Management (Supports 1 to 5 Users)
+// -------------------------------------------------------------
+async function countUsers() {
+  const client = getClient();
+  if (!client) return 0;
+  const { count, error } = await client
+    .from('users')
+    .select('*', { count: 'exact', head: true });
+  if (error) throw error;
+  return count || 0;
+}
+
+async function getAllUsers() {
+  const client = getClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('users')
+    .select('id, name, phone_number, is_active, created_at')
+    .eq('is_active', true);
+  if (error) throw error;
+  return data || [];
+}
+
+async function getUserById(id) {
+  const client = getClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from('users')
+    .select('id, name, phone_number, is_active, created_at')
+    .eq('id', id)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+async function getUserByPinHash(pinHash) {
+  const client = getClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from('users')
+    .select('id, name, phone_number, is_active')
+    .eq('pin_hash', pinHash)
+    .eq('is_active', true)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+async function createUser(name, pinHash, phoneNumber) {
+  const client = getClient();
+  if (!client) throw new Error('Supabase client not initialized');
+
+  const currentCount = await countUsers();
+  if (currentCount >= (config.maxUsers || 5)) {
+    throw new Error(`Maximum user limit (${config.maxUsers || 5}) reached for this personal installation.`);
+  }
+
+  // 1. Insert user
+  const { data: user, error: userError } = await client
+    .from('users')
+    .insert([{ name, pin_hash: pinHash, phone_number: phoneNumber }])
+    .select()
+    .single();
+  if (userError) throw userError;
+
+  // 2. Initialize default wallets for this user
+  const walletsToInsert = config.defaultWallets.map(w => ({
+    user_id: user.id,
+    name: w.name,
+    weekly_amount: w.weeklyAmount,
+    daily_limit: w.dailyLimit || 0,
+    weekly_max_count: w.weeklyMaxCount,
+    per_access_amount: w.perAccessAmount,
+    rollover: w.rollover !== false,
+    used_today: 0,
+    used_this_week: 0,
+    balance: w.weeklyAmount
+  }));
+
+  const { error: walletError } = await client
+    .from('wallets')
+    .insert(walletsToInsert);
+  if (walletError) throw walletError;
+
+  return user;
+}
+
+// -------------------------------------------------------------
+// Wallets
+// -------------------------------------------------------------
+async function getUserWallets(userId) {
+  const client = getClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('wallets')
+    .select('*')
+    .eq('user_id', userId)
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+async function getWalletByName(userId, walletName) {
+  const client = getClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from('wallets')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('name', walletName)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
+}
+
+async function updateWallet(walletId, updates) {
+  const client = getClient();
+  if (!client) return;
+  const { data, error } = await client
+    .from('wallets')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', walletId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// -------------------------------------------------------------
+// Transactions
+// -------------------------------------------------------------
+async function createTransaction(userId, walletId, type, amount, note) {
+  const client = getClient();
+  if (!client) return;
+  const { data, error } = await client
+    .from('transactions')
+    .insert([{
+      user_id: userId,
+      wallet_id: walletId,
+      type,
+      amount,
+      note
+    }])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function getUserTransactions(userId, limit = 20) {
+  const client = getClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('transactions')
+    .select(`
+      id,
+      user_id,
+      wallet_id,
+      type,
+      amount,
+      timestamp,
+      note,
+      wallets ( name )
+    `)
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  return (data || []).map(tx => ({
+    id: tx.id,
+    user_id: tx.user_id,
+    wallet_id: tx.wallet_id,
+    wallet_name: tx.wallets ? tx.wallets.name : 'Unknown',
+    type: tx.type,
+    amount: tx.amount,
+    timestamp: tx.timestamp,
+    note: tx.note
+  }));
+}
+
+// -------------------------------------------------------------
+// Sessions
+// -------------------------------------------------------------
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+async function createSession(userId, token) {
+  const client = getClient();
+  if (!client) return;
+  const now = Date.now();
+  const { error } = await client
+    .from('sessions')
+    .insert([{ token, user_id: userId, created_at: now, last_active: now }]);
+  if (error) throw error;
+}
+
+async function validateSession(token) {
+  const client = getClient();
+  if (!client || !token) return null;
+
+  const { data, error } = await client
+    .from('sessions')
+    .select('token, user_id, last_active, users ( id, name, phone_number, is_active )')
+    .eq('token', token)
+    .single();
+
+  if (error || !data) return null;
+
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  if (data.last_active < cutoff) {
+    await deleteSession(token);
+    return null;
+  }
+
+  // Update last_active
+  await client
+    .from('sessions')
+    .update({ last_active: Date.now() })
+    .eq('token', token);
+
+  return data.users;
+}
+
+async function deleteSession(token) {
+  const client = getClient();
+  if (!client || !token) return;
+  await client.from('sessions').delete().eq('token', token);
+}
+
+async function cleanupExpiredSessions() {
+  const client = getClient();
+  if (!client) return;
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  await client.from('sessions').delete().lt('last_active', cutoff);
+}
+
+// -------------------------------------------------------------
+// PIN Attempts & Lockout
+// -------------------------------------------------------------
+async function logPinAttempt(userId, success) {
+  const client = getClient();
+  if (!client) return;
+  await client.from('pin_attempts').insert([{
+    user_id: userId || null,
+    success: success ? 1 : 0
+  }]);
+}
+
+async function isUserLockedOut(userId) {
+  const client = getClient();
+  if (!client) return false;
+  const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  
+  let query = client
+    .from('pin_attempts')
+    .select('*', { count: 'exact', head: true })
+    .eq('success', 0)
+    .gt('timestamp', cutoff);
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { count, error } = await query;
+  if (error) return false;
+  return (count || 0) >= 3;
+}
+
+// -------------------------------------------------------------
+// Resets (Cron)
+// -------------------------------------------------------------
+async function resetDailyWallets() {
+  const client = getClient();
+  if (!client) return;
+  const { error } = await client
+    .from('wallets')
+    .update({ used_today: 0, updated_at: new Date().toISOString() })
+    .neq('used_today', 0);
+  if (error) throw error;
+}
+
+async function resetWeeklyWallets() {
+  const client = getClient();
+  if (!client) return;
+
+  // Retrieve all wallets
+  const { data: wallets, error } = await client.from('wallets').select('*');
+  if (error) throw error;
+
+  for (const w of (wallets || [])) {
+    // If rollover is enabled and user didn't exhaust allocation, preserve unspent balance or reset to weeklyAmount
+    let newBalance = w.weekly_amount;
+    if (w.rollover && w.balance > 0) {
+      // Allow remaining balance to roll over (capped at 2x weekly amount to prevent runaway hoarding)
+      newBalance = Math.min(w.weekly_amount * 2, w.balance + w.weekly_amount);
+    }
+
+    await client
+      .from('wallets')
+      .update({
+        used_today: 0,
+        used_this_week: 0,
+        balance: newBalance,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', w.id);
+  }
 }
 
 module.exports = {
-  getDb,
-  initDatabase: getDb,
-  /**
-   * Helper to run a query and return rows as plain objects.
-   */
-  runQuery: async (sql, params = []) => {
-    const database = await getDb();
-    const stmt = database.prepare(sql);
-    if (params && params.length > 0) {
-      stmt.bind(params);
-    } else if (params && typeof params === 'object') {
-      stmt.bind(params);
-    }
-    const results = [];
-    while (stmt.step()) {
-      results.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return results;
-  },
-  /**
-   * Helper to execute a statement (INSERT/UPDATE/DELETE) and get info.
-   */
-  execStmt: async (sql, params = []) => {
-    const database = await getDb();
-    const stmt = database.prepare(sql);
-    if (params && params.length > 0) {
-      stmt.bind(params);
-    } else if (params && typeof params === 'object') {
-      stmt.bind(params);
-    }
-    stmt.step();
-    stmt.free();
-    
-    saveDb();
-    
-    let lastID = 0;
-    if (sql.trim().toUpperCase().startsWith('INSERT')) {
-        const res = database.exec("SELECT last_insert_rowid() as id");
-        if (res.length > 0 && res[0].values.length > 0) {
-            lastID = res[0].values[0][0];
-        }
-    }
-    
-    const changes = database.getRowsModified();
-    return { lastID, changes };
-  },
-  /**
-   * Helper to execute a statement without returning rows.
-   */
-  execStmt: async (sql, params = []) => {
-    const database = await getDb();
-    const stmt = database.prepare(sql);
-    if (params && params.length > 0) {
-      stmt.bind(params);
-    } else if (params && typeof params === 'object') {
-      stmt.bind(params);
-    }
-    while (stmt.step()) {
-      // Execute the statement
-    }
-    stmt.free();
-    saveDb();
-  }
+  getClient,
+  countUsers,
+  getAllUsers,
+  getUserById,
+  getUserByPinHash,
+  createUser,
+  getUserWallets,
+  getWalletByName,
+  updateWallet,
+  createTransaction,
+  getUserTransactions,
+  createSession,
+  validateSession,
+  deleteSession,
+  cleanupExpiredSessions,
+  logPinAttempt,
+  isUserLockedOut,
+  resetDailyWallets,
+  resetWeeklyWallets
 };

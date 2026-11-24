@@ -631,6 +631,12 @@
           <p id="authSubtitle">Your money. Your rules.</p>
         </div>
         <div class="panel">
+          <div id="setupFields" style="display:none;margin-bottom:14px;width:100%;flex-direction:column;gap:10px;">
+            <div style="font-size:13px;font-weight:600;color:var(--accent);text-align:center;">User Setup (Personal 1-5 Users)</div>
+            <input id="setupName" type="text" placeholder="Your Name (e.g. Timothy)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:12px;color:#fff;font-size:14px;outline:none;" />
+            <input id="setupPhone" type="tel" placeholder="M-Pesa Phone (e.g. 0712345678)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:12px;color:#fff;font-size:14px;outline:none;" />
+            <div style="font-size:12px;color:rgba(255,255,255,0.6);text-align:center;">Choose a 4-digit PIN below:</div>
+          </div>
           <div class="pin-dots" id="dots"></div>
           <div class="pin-grid" id="pad"></div>
           <div class="fingerprint-row">
@@ -712,6 +718,11 @@
               <div class="hint">App control</div>
             </div>
             <div class="settings-list">
+              <div id="activeProfileBox" style="background:rgba(255,255,255,0.06);padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);margin-bottom:8px;">
+                <div style="font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px;">Active Profile</div>
+                <div id="settingsProfileName" style="font-size:16px;font-weight:600;margin-top:2px;">Timothy</div>
+                <div id="settingsProfilePhone" style="font-size:13px;color:var(--accent);margin-top:2px;">+254...</div>
+              </div>
               <div class="settings-toggle">
                 <div class="toggle-copy">
                   <strong>Biometric lock</strong>
@@ -722,9 +733,9 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <button class="settings-btn" type="button" onclick="showToast('Settings are visual only in this build', 'warning')">Change PIN</button>
-              <button class="settings-btn" type="button" onclick="showToast('Week reset is handled by the server', 'warning')">Reset week</button>
-              <button class="settings-btn" type="button" onclick="showToast('DinheirOS v1.0.7', 'success')">App version</button>
+              <button class="settings-btn" id="addNewUserBtn" type="button" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);">+ Add Another User (Up to 5)</button>
+              <button class="settings-btn" type="button" onclick="lockApp()">🔒 Switch / Lock User</button>
+              <button class="settings-btn" type="button" onclick="showToast('DinheirOS Cloud v2.0', 'success')">App version (Cloud v2.0)</button>
               <button id="settingsPasskeyBtn" class="settings-btn" type="button" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;">Set Up Passkey</button>
             </div>
           </div>
@@ -744,6 +755,7 @@
     const boot = () => {
     // In-memory token only
     let sessionToken = null;
+    let currentUser = null;
     let pinTemp = null;
     let firstPinEntry = null;
     let pinMode = 'login';
@@ -791,9 +803,28 @@
       } catch (e) {}
     }
 
+    function saveUser(user) {
+      currentUser = user;
+      try {
+        if (user) sessionStorage.setItem('usr', JSON.stringify(user));
+        else sessionStorage.removeItem('usr');
+      } catch (e) {}
+    }
+
+    function getSavedUser() {
+      try {
+        const raw = sessionStorage.getItem('usr');
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+
     function clearToken() {
       sessionToken = null;
-      try { sessionStorage.removeItem('st'); } catch (e) {}
+      currentUser = null;
+      try {
+        sessionStorage.removeItem('st');
+        sessionStorage.removeItem('usr');
+      } catch (e) {}
     }
 
     function getSavedToken() {
@@ -941,7 +972,14 @@
     function setAuthMode(mode) {
       pinMode = mode;
       const subtitle = document.getElementById('authSubtitle');
-      subtitle.textContent = mode === 'setup' ? 'This PIN protects all withdrawals' : 'Your money. Your rules.';
+      const setupFields = document.getElementById('setupFields');
+      if (mode === 'setup') {
+        subtitle.textContent = 'Setup your user profile & PIN';
+        if (setupFields) setupFields.style.display = 'flex';
+      } else {
+        subtitle.textContent = 'Your money. Your rules.';
+        if (setupFields) setupFields.style.display = 'none';
+      }
     }
 
     function showAuthScreen() {
@@ -994,9 +1032,16 @@
 
     function setGreeting() {
       const greeting = getGreeting();
+      const userName = (currentUser && currentUser.name) ? currentUser.name : 'Timothy';
       const greetingEl = document.getElementById('greeting');
-      if (greetingEl) greetingEl.textContent = `${greeting} Timothy 👋`;
-      document.getElementById('homeGreeting').textContent = `${greeting} Timothy`;
+      if (greetingEl) greetingEl.textContent = `${greeting} ${userName} 👋`;
+      const homeGreetingEl = document.getElementById('homeGreeting');
+      if (homeGreetingEl) homeGreetingEl.textContent = `${greeting} ${userName}`;
+
+      const settingsName = document.getElementById('settingsProfileName');
+      if (settingsName) settingsName.textContent = userName;
+      const settingsPhone = document.getElementById('settingsProfilePhone');
+      if (settingsPhone) settingsPhone.textContent = (currentUser && (currentUser.phoneNumber || currentUser.phone_number)) || 'M-Pesa Connected';
     }
 
     function showTab(name) {
@@ -1029,57 +1074,45 @@
       if (pinSubmitting || !pinTemp || pinTemp.length !== 4) return;
       pinSubmitting = true;
       try {
-        const pinSet = await checkPinStatus();
-        if (!pinSet) {
-          if (!firstPinEntry) {
-            firstPinEntry = pinTemp;
-            pinTemp = '';
-            setAuthMode('setup');
-            updateDots();
-            setAuthMessage('Confirm PIN', 'success');
-            return;
-          }
-          if (firstPinEntry !== pinTemp) {
-            firstPinEntry = null;
-            pinTemp = '';
-            setAuthMode('setup');
-            updateDots();
-            animateAuthError();
-            setAuthMessage('PINs do not match', 'error');
-            showToast('⛔ PINs do not match', 'error');
-            return;
-          }
-          const r = await api('/auth/setup', { method:'POST', body: JSON.stringify({ pin: firstPinEntry }) });
-          if (r.ok) {
-            const j = await r.json();
+        if (pinMode === 'setup') {
+          const nameInput = document.getElementById('setupName');
+          const phoneInput = document.getElementById('setupPhone');
+          const name = (nameInput && nameInput.value.trim()) || 'Timothy';
+          const phone = (phoneInput && phoneInput.value.trim()) || '0712345678';
+
+          const r = await api('/auth/setup', {
+            method: 'POST',
+            body: JSON.stringify({ name, phoneNumber: phone, pin: pinTemp })
+          });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.success) {
             saveToken(j.token);
+            if (j.user) saveUser(j.user);
             animateAuthSuccess();
-            showToast('✅ PIN set successfully', 'success');
+            showToast(`✅ Welcome, ${j.user ? j.user.name : name}!`, 'success');
+            setAuthMode('login');
             showNav(true);
             showDashboard();
-            loadWallets();
-            loadHistory();
           } else {
-            const j = await r.json().catch(() => ({}));
             animateAuthError();
             setAuthMessage(j.error || 'Setup failed', 'error');
             showToast('⛔ ' + (j.error || 'Setup failed'), 'error');
+            pinTemp = '';
+            updateDots();
           }
           return;
         }
 
         const r = await api('/auth/login', { method:'POST', body: JSON.stringify({ pin: pinTemp }) });
-        if (r.ok) {
-          const j = await r.json();
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.success) {
           saveToken(j.token);
+          if (j.user) saveUser(j.user);
           animateAuthSuccess();
-          showToast('✅ Access granted', 'success');
+          showToast(`✅ Welcome back, ${j.user ? j.user.name : ''}!`, 'success');
           showNav(true);
           showDashboard();
-          loadWallets();
-          loadHistory();
         } else {
-          const j = await r.json().catch(() => ({}));
           document.getElementById('attemptInfo').textContent = j.error || 'Login failed';
           pinTemp = '';
           updateDots();
@@ -1503,9 +1536,9 @@
           if (splash) {
             splash.style.opacity = '1';
             splash.style.display = 'flex';
-            splash.innerHTML += '<p style="color:#ef4444;margin-top:20px;font-size:13px;text-align:center;">⚠️ Server not reachable<br>Make sure Termux is running<br>node server.js</p>';
+            splash.innerHTML += '<p style="color:#ef4444;margin-top:20px;font-size:13px;text-align:center;">⚠️ Server not reachable<br>Check connection or cloud status</p>';
           }
-          setStartupStatus('Server not reachable. Make sure Termux is running and node server.js is active.', '#f87171');
+          setStartupStatus('Server not reachable. Check your connection or deployment.', '#f87171');
           return;
         }
 
@@ -1513,11 +1546,14 @@
         const savedToken = getSavedToken();
         if (savedToken) {
           sessionToken = savedToken;
+          currentUser = getSavedUser();
           try {
-            const r = await fetch('/api/auth/status', {
+            const r = await fetch('/api/auth/me', {
               headers: { Authorization: 'Bearer ' + savedToken }
             }).catch(() => null);
             if (r && r.ok) {
+              const body = await r.json();
+              if (body && body.user) saveUser(body.user);
               setStartupStatus('Session restored. Opening dashboard...');
               showNav(true);
               showDashboard();
@@ -1529,9 +1565,10 @@
 
         setStartupStatus('Loading PIN screen...');
         const r2 = await fetch('/api/auth/status').catch(() => null);
-        const pinSet = r2 && r2.ok ? (await r2.json()).pinSet : false;
+        const authData = r2 && r2.ok ? (await r2.json()) : {};
+        const isConfigured = Boolean(authData.configured ?? authData.pinSet);
         showNav(false);
-        if (!pinSet) renderPinSetup();
+        if (!isConfigured) renderPinSetup();
         else renderPinLogin();
         maybeAutoBiometricUnlock();
         setStartupStatus('');
@@ -1584,6 +1621,20 @@
         biometricLockToggle.addEventListener('change', () => {
           setBiometricLockEnabled(biometricLockToggle.checked);
           showToast(biometricLockToggle.checked ? 'Biometric lock enabled' : 'Biometric lock disabled', biometricLockToggle.checked ? 'success' : 'warning');
+        });
+      }
+      const addNewUserBtn = document.getElementById('addNewUserBtn');
+      if (addNewUserBtn) {
+        addNewUserBtn.addEventListener('click', () => {
+          clearToken();
+          showNav(false);
+          showAuthScreen();
+          setAuthMode('setup');
+          resetPinEntry();
+          const nameInput = document.getElementById('setupName');
+          if (nameInput) nameInput.value = '';
+          const phoneInput = document.getElementById('setupPhone');
+          if (phoneInput) phoneInput.value = '';
         });
       }
       if (navHome) navHome.addEventListener('click', () => showTab('home'));

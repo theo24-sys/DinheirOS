@@ -1,41 +1,54 @@
+// Default wallet configurations for new users in DinheirOS
 module.exports = {
-  wallets: {
-    Fare: {
+  maxUsers: 5,
+  defaultWallets: [
+    {
+      name: 'Fare',
       weeklyAmount: 420,
-      maxCount: 3,
+      dailyLimit: 0,
+      weeklyMaxCount: 3,
       perAccessAmount: 140,
       rollover: true
     },
-    Tokens: {
+    {
+      name: 'Tokens',
       weeklyAmount: 180,
-      maxCount: 3,
+      dailyLimit: 1, // Max 1 withdrawal per day
+      weeklyMaxCount: 3,
       perAccessAmount: 60,
-      dailyLimit: 1,
       rollover: true
     },
-    Data: {
+    {
+      name: 'Data',
       weeklyAmount: 100,
-      maxCount: 2,
+      dailyLimit: 0,
+      weeklyMaxCount: 2,
       perAccessAmount: 50,
       rollover: true
     },
-    Meat: {
+    {
+      name: 'Meat',
       weeklyAmount: 450,
-      maxCount: 3,
+      dailyLimit: 0,
+      weeklyMaxCount: 3,
       perAccessAmount: 150,
       rollover: true
     },
-    Betting: {
+    {
+      name: 'Betting',
       weeklyAmount: 100,
-      maxCount: 2,
+      dailyLimit: 0,
+      weeklyMaxCount: 2,
       perAccessAmount: 50,
       rollover: true
     },
-    Energy: {
+    {
+      name: 'Energy',
       weeklyAmount: 180,
-      maxCount: 3,
+      dailyLimit: 0,
+      weeklyMaxCount: 3,
       perAccessAmount: 60,
       rollover: true
     }
-  }
+  ]
 };

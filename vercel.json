@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/(.*)", "destination": "/$1" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/reset",
+      "schedule": "0 0 * * 1"
+    }
+  ]
+}

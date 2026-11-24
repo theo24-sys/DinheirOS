@@ -1,64 +1,55 @@
-// server.js – entry point for FinanceOS
-// ------------------------------------------------
-// Loads environment, initializes DB, registers middleware, routes, and starts the server.
-// No TypeScript, plain JavaScript, async/await style.
-
+// server.js – Main Express Application for DinheirOS (Vercel & Node.js)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const crypto = require('crypto');
 
-const { initDatabase, execStmt } = require('./db');
 const routes = require('./routes');
-const { resetDaily, resetWeekly } = require('./cron'); // ensures cron job is scheduled
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Simple health check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Root health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
 
-// API routes
+// Mount API routes
 app.use('/api', routes);
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/', (req, res) => {
+
+// Catch-all to serve index.html for SPA client-side routing
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Initialise DB (creates tables if missing)
-initDatabase();
+// Periodic session cleanup (every 10 minutes, when running persistent server)
+if (process.env.NODE_ENV !== 'production' || require.main === module) {
+  setInterval(async () => {
+    try {
+      await db.cleanupExpiredSessions();
+    } catch (e) {
+      // ignore
+    }
+  }, 10 * 60 * 1000);
+}
 
-// Create sessions table for session token management and ensure it's present
-(async () => {
-  try {
-    await execStmt(`CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      created_at INTEGER NOT NULL,
-      last_active INTEGER NOT NULL
-    )`);
-    console.log('Sessions table ensured');
-  } catch (err) {
-    console.error('Failed to ensure sessions table:', err.message);
-  }
-})();
+// Start listening if run directly via node server.js
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`===============================================`);
+    console.log(`  DinheirOS Cloud Server listening on port ${PORT}`);
+    console.log(`  Supabase: ${process.env.SUPABASE_URL ? 'Configured' : 'NOT SET'}`);
+    console.log(`  M-Pesa:   ${process.env.DARAJA_CONSUMER_KEY ? 'Live Daraja' : 'MOCK Mode'}`);
+    console.log(`===============================================`);
+  });
+}
 
-// Session expiry: remove sessions inactive for more than 5 minutes
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-setInterval(async () => {
-  const cutoff = Date.now() - SESSION_TIMEOUT_MS;
-  try {
-    await execStmt('DELETE FROM sessions WHERE last_active < ?', [cutoff]);
-  } catch (err) {
-    console.error('Session cleanup error:', err.message);
-  }
-}, 60 * 1000); // run every minute
-
-app.listen(PORT, () => {
-  console.log(`FinanceOS server listening on port ${PORT}`);
-});
+// Export for Vercel Serverless
+module.exports = app;

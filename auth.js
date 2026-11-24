@@ -1,77 +1,124 @@
 const crypto = require('crypto');
-const { runQuery, execStmt } = require('./db');
+const db = require('./db');
+const config = require('./config');
 
-const SALT = 'DinheirOS_salt_2024';
+const SALT = process.env.PIN_SALT || 'DinheirOS_cloud_salt_2025';
 
 function hashPin(pin) {
-  return crypto.createHash('sha256').update(pin + SALT).digest('hex');
+  return crypto.createHash('sha256').update(String(pin).trim() + SALT).digest('hex');
 }
 
-async function isPinSet() {
-  const rows = await runQuery('SELECT hash FROM pin WHERE id = 1');
-  return rows.length > 0;
+async function isConfigured() {
+  const count = await db.countUsers();
+  return count > 0;
 }
 
-async function setPin(pin) {
-  const hash = hashPin(pin);
-  await execStmt('DELETE FROM pin');
-  await execStmt('INSERT INTO pin (id, hash) VALUES (1, ?)', [hash]);
-  return true;
-}
-
-async function verifyPin(pin) {
-  const rows = await runQuery('SELECT hash FROM pin WHERE id = 1');
-  if (rows.length === 0) return false;
-  return rows[0].hash === hashPin(pin);
-}
-
-async function isLockedOut() {
-  const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const rows = await runQuery(
-    'SELECT COUNT(*) as count FROM pin_attempts WHERE success = 0 AND timestamp > ?',
-    [cutoff]
-  );
-  return rows.length > 0 && rows[0].count >= 3;
-}
-
-async function createSession() {
-  const token = crypto.randomUUID();
-  const now = Date.now();
-  await execStmt('INSERT INTO sessions (token, created_at, last_active) VALUES (?, ?, ?)', [token, now, now]);
-  return token;
-}
-
-async function validateSession(token) {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  const rows = await runQuery('SELECT id, last_active FROM sessions WHERE token = ?', [token]);
-  if (rows.length > 0) {
-    const rawLastActive = rows[0].last_active;
-    const numericLastActive = typeof rawLastActive === 'number' ? rawLastActive : Number(rawLastActive) || Date.parse(rawLastActive);
-    if (!Number.isFinite(numericLastActive) || numericLastActive < cutoff) {
-      return false;
-    }
-    await execStmt('UPDATE sessions SET last_active = ? WHERE token = ?', [Date.now(), token]);
-    return true;
+async function loginWithPin(pin) {
+  if (!pin || String(pin).length !== 4) {
+    return { success: false, status: 400, error: 'PIN must be exactly 4 digits' };
   }
-  return false;
+
+  // Check lockout
+  const lockedOut = await db.isUserLockedOut();
+  if (lockedOut) {
+    return { success: false, status: 429, error: 'Too many failed attempts. Please wait 5 minutes.' };
+  }
+
+  const pinHash = hashPin(pin);
+  const user = await db.getUserByPinHash(pinHash);
+
+  if (!user) {
+    await db.logPinAttempt(null, false);
+    return { success: false, status: 401, error: 'Invalid PIN' };
+  }
+
+  // Success
+  await db.logPinAttempt(user.id, true);
+  const token = crypto.randomUUID();
+  await db.createSession(user.id, token);
+
+  return {
+    success: true,
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      phoneNumber: user.phone_number
+    }
+  };
 }
 
-async function deleteSession(token) {
-  await execStmt('DELETE FROM sessions WHERE token = ?', [token]);
+async function setupUser({ name, pin, phoneNumber }) {
+  if (!name || name.trim().length === 0) {
+    return { success: false, status: 400, error: 'Name is required' };
+  }
+  if (!pin || String(pin).length !== 4) {
+    return { success: false, status: 400, error: 'PIN must be exactly 4 digits' };
+  }
+  if (!phoneNumber || phoneNumber.trim().length < 9) {
+    return { success: false, status: 400, error: 'Valid phone number required (e.g. +254712345678)' };
+  }
+
+  const currentCount = await db.countUsers();
+  if (currentCount >= (config.maxUsers || 5)) {
+    return { success: false, status: 400, error: `Maximum user limit (${config.maxUsers || 5}) reached.` };
+  }
+
+  const pinHash = hashPin(pin);
+  const existingWithPin = await db.getUserByPinHash(pinHash);
+  if (existingWithPin) {
+    return { success: false, status: 400, error: 'This PIN is already in use. Please pick a unique 4-digit PIN.' };
+  }
+
+  const user = await db.createUser(name.trim(), pinHash, phoneNumber.trim());
+  const token = crypto.randomUUID();
+  await db.createSession(user.id, token);
+
+  return {
+    success: true,
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      phoneNumber: user.phone_number
+    }
+  };
 }
 
-async function logAttempt(success) {
-  await execStmt('INSERT INTO pin_attempts (success) VALUES (?)', [success ? 1 : 0]);
+// Express authentication middleware
+async function authMiddleware(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized: Session token missing' });
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    const user = await db.validateSession(token);
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized: Session expired or invalid' });
+    }
+
+    req.user = user;
+    req.sessionToken = token;
+    next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    res.status(500).json({ error: 'Internal authentication error' });
+  }
+}
+
+async function logout(token) {
+  if (token) {
+    await db.deleteSession(token);
+  }
 }
 
 module.exports = {
   hashPin,
-  isPinSet,
-  setPin,
-  verifyPin,
-  isLockedOut,
-  createSession,
-  validateSession,
-  deleteSession,
-  logAttempt
+  isConfigured,
+  loginWithPin,
+  setupUser,
+  authMiddleware,
+  logout
 };

@@ -1,18 +1,46 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('./config');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+function getSupabaseConfig() {
+  let url = process.env.SUPABASE_URL || '';
+  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+  // Strip accidental quotes if user copy-pasted with quotes e.g. "https://..."
+  url = String(url).trim().replace(/^["']|["']$/g, '');
+  key = String(key).trim().replace(/^["']|["']$/g, '');
+
+  // Add https:// if user entered domain without protocol
+  if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+
+  // Remove trailing slashes
+  url = url.replace(/\/+$/, '');
+
+  return { url, key };
+}
 
 let supabase = null;
 
 function getClient() {
   if (supabase) return supabase;
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.warn('[DB WARNING] SUPABASE_URL or SUPABASE_KEY not configured. DB operations will fail until set.');
-    return null;
+  const { url, key } = getSupabaseConfig();
+
+  if (!url || url.includes('your-project.supabase.co')) {
+    throw new Error('SUPABASE_URL is not configured. Please add your real Supabase Project URL in Vercel Environment Variables.');
   }
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+
+  if (!key || key.includes('your-supabase-service-role')) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured. Please add your Supabase key in Vercel Environment Variables.');
+  }
+
+  try {
+    new URL(url);
+  } catch (e) {
+    throw new Error(`Invalid SUPABASE_URL ("${url}"). Must be a valid URL like https://xyz.supabase.co`);
+  }
+
+  supabase = createClient(url, key, {
     auth: { persistSession: false }
   });
   return supabase;

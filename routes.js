@@ -26,11 +26,17 @@ router.get('/auth/status', async (req, res) => {
       configured: userCount > 0,
       pinSet: userCount > 0,
       userCount,
-      maxUsers: 5
+      maxUsers: 5,
+      dbConnected: true
     });
   } catch (err) {
     console.error('Error fetching auth status:', err);
-    res.status(500).json({ error: err.message });
+    res.status(503).json({
+      error: err.message || 'Database not connected',
+      dbConnected: false,
+      configured: false,
+      pinSet: false
+    });
   }
 });
 

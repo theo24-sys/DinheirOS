@@ -1565,7 +1565,25 @@
 
         setStartupStatus('Loading PIN screen...');
         const r2 = await fetch('/api/auth/status').catch(() => null);
-        const authData = r2 && r2.ok ? (await r2.json()) : {};
+        let authData = {};
+        if (r2) {
+          authData = await r2.json().catch(() => ({}));
+        }
+
+        if (!r2 || !r2.ok || authData.dbConnected === false) {
+          showNav(false);
+          const errMsg = authData.error || 'Database connection error';
+          showToast('⚠️ ' + errMsg, 'error');
+          const attemptInfo = document.getElementById('attemptInfo');
+          if (attemptInfo) {
+            attemptInfo.innerHTML = `<span style="color:#ef4444;font-size:12px;line-height:1.4;display:block;margin-top:6px;">⚠️ <b>Database Error:</b><br>${errMsg}</span>`;
+          }
+          const subtitle = document.getElementById('authSubtitle');
+          if (subtitle) subtitle.textContent = 'Setup Supabase in Vercel to continue';
+          renderPinSetup();
+          return;
+        }
+
         const isConfigured = Boolean(authData.configured ?? authData.pinSet);
         showNav(false);
         if (!isConfigured) renderPinSetup();

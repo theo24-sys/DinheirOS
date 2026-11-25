@@ -47,8 +47,8 @@ Runs anywhere via **Vercel** (Cloud Web App) and **Capacitor** (Android APK), po
 
 Every withdrawal must pass through 3 server-enforced security gates before any money can be released:
 
-1. **Gate 1 (Daily Limit):** Enforces a daily access cap (e.g., Tokens wallet allows max 1 withdrawal per day).
-2. **Gate 2 (Weekly Frequency):** Prevents exceeding weekly count (e.g., Fare wallet allows max 3 accesses per week).
+1. **Gate 1 (Daily Limit):** Enforces a daily access cap when configured; the current wallets have no daily cap.
+2. **Gate 2 (Weekly Frequency):** Prevents exceeding the wallet's weekly count.
 3. **Gate 3 (Balance & Allocation):** Prevents overdrafts beyond the assigned weekly budget.
 4. **Rollover:** Unused funds roll over safely to the next week (capped at 2x weekly amount).
 
@@ -61,10 +61,11 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 2. Go to the **SQL Editor** in the Supabase dashboard.
 3. Open [`schema.sql`](schema.sql), copy its contents, paste it into the SQL editor, and click **Run**.
    Re-run this file after pulling updates that add database columns or payout functions.
-4. Go to **Project Settings** → **API** and copy:
+4. To apply the current five-wallet budgets to existing users, run [`scripts/update-wallet-budgets.sql`](scripts/update-wallet-budgets.sql) once after `schema.sql`. It preserves the mapped wallets' spending and transaction links, creates any missing target wallets, and deletes wallets outside the requested set. Deleted wallet rows lose their balance; associated transactions remain but are no longer linked to that wallet. The migration stops if an obsolete wallet has a pending payout or if a legacy/new wallet name conflicts.
+5. Go to **Project Settings** → **API** and copy:
    - `Project URL`
    - `service_role` secret or secret API key. Do not use the `anon` / publishable key for the server.
-5. Run `npm install` after pulling changes so `package-lock.json` includes the server-side passkey verifier.
+6. Run `npm install` after pulling changes so `package-lock.json` includes the server-side passkey verifier.
 
 ---
 
@@ -104,7 +105,7 @@ Each wallet has an **Adjust weekly budget** action. A change applies immediately
    - **Name:** e.g., Timothy
    - **M-Pesa Phone:** e.g., `0712345678` or `+254712345678`
    - **4-Digit PIN:** Choose your access PIN.
-3. Default wallets (`Fare`, `Tokens`, `Data`, `Meat`, `Betting`, `Energy`) are automatically initialized for you!
+3. Default wallets (`Food`, `Kplc`, `Stake`, `Fare`, `Data`) are automatically initialized for you. Kplc is Ksh 250 per week with three Ksh 83 taps; the remaining Ksh 1 stays in the wallet.
 4. *(Optional)* To add up to 4 more users, go to **Settings** → **+ Add Another User**.
 
 ---

@@ -34,7 +34,7 @@
       --card-tokens: linear-gradient(135deg, #f59e0b, #d97706);
       --card-data: linear-gradient(135deg, #3b82f6, #2563eb);
       --card-meat: linear-gradient(135deg, #ef4444, #dc2626);
-      --card-energy: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      --card-stake: linear-gradient(135deg, #10b981, #059669);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -442,10 +442,10 @@
     .wallet-card:hover { transform: translateY(-4px); box-shadow: 0 24px 46px rgba(0,0,0,0.38); }
     .wallet-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at top left, rgba(255,255,255,0.15), transparent 70%); pointer-events: none; }
     .wallet-card[data-wallet="Fare"] { background: var(--card-fare); }
-    .wallet-card[data-wallet="Tokens"] { background: var(--card-tokens); }
+    .wallet-card[data-wallet="Kplc"] { background: var(--card-tokens); }
     .wallet-card[data-wallet="Data"] { background: var(--card-data); }
-    .wallet-card[data-wallet="Meat"] { background: var(--card-meat); }
-    .wallet-card[data-wallet="Energy"] { background: var(--card-energy); }
+    .wallet-card[data-wallet="Food"] { background: var(--card-meat); }
+    .wallet-card[data-wallet="Stake"] { background: var(--card-stake); }
 
     .wallet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
     .wallet-name { font-size: 14px; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
@@ -1229,30 +1229,27 @@
 
     const walletDisplayNames = {
       Fare: 'Fare',
-      Tokens: 'Electricity',
+      Kplc: 'Kplc',
       Data: 'Data',
-      Meat: 'Food',
-      Betting: 'Fun',
-      Energy: 'Energy'
+      Food: 'Food',
+      Stake: 'Stake'
     };
 
     const walletColors = {
       Fare: 'linear-gradient(135deg, rgba(6,182,212,0.45), rgba(8,145,178,0.22))',
-      Tokens: 'linear-gradient(135deg, rgba(245,158,11,0.45), rgba(217,119,6,0.22))',
+      Kplc: 'linear-gradient(135deg, rgba(245,158,11,0.45), rgba(217,119,6,0.22))',
       Data: 'linear-gradient(135deg, rgba(59,130,246,0.45), rgba(37,99,235,0.22))',
-      Meat: 'linear-gradient(135deg, rgba(239,68,68,0.45), rgba(220,38,38,0.22))',
-      Betting: 'linear-gradient(135deg, rgba(16,185,129,0.45), rgba(5,150,105,0.22))',
-      Energy: 'linear-gradient(135deg, rgba(139,92,246,0.45), rgba(124,58,237,0.22))'
+      Food: 'linear-gradient(135deg, rgba(239,68,68,0.45), rgba(220,38,38,0.22))',
+      Stake: 'linear-gradient(135deg, rgba(16,185,129,0.45), rgba(5,150,105,0.22))'
     };
 
     const svgAttrs = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
     const walletIcons = {
       Fare: `<svg ${svgAttrs}><path d="M4 16.5V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9.5"/><path d="M4 11h16"/><path d="M4 16.5h16"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="16.5" cy="18.5" r="1.5"/><path d="M16.5 7H18"/></svg>`,
-      Tokens: `<svg ${svgAttrs}><path d="M13.5 2 5 13h5.5L9.5 22 18 11h-5.5z"/></svg>`,
+      Kplc: `<svg ${svgAttrs}><path d="M13.5 2 5 13h5.5L9.5 22 18 11h-5.5z"/></svg>`,
       Data: `<svg ${svgAttrs}><path d="M3 9a15 15 0 0 1 18 0"/><path d="M6.5 12.5a10 10 0 0 1 11 0"/><path d="M9.8 15.8a5 5 0 0 1 4.4 0"/><circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none"/></svg>`,
-      Meat: `<svg ${svgAttrs}><path d="M6 8h12l-1.2 11a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>`,
-      Betting: `<svg ${svgAttrs}><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/></svg>`,
-      Energy: `<svg ${svgAttrs}><path d="M4 8h12v5.5A5.5 5.5 0 0 1 10.5 19h-1A5.5 5.5 0 0 1 4 13.5z"/><path d="M16 9.5h1.8a3 3 0 0 1 0 6H16"/><path d="M7 5c0-1 .8-1.6.8-2.6"/></svg>`
+      Food: `<svg ${svgAttrs}><path d="M6 8h12l-1.2 11a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>`,
+      Stake: `<svg ${svgAttrs}><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/></svg>`
     };
     const walletFallbackIcon = `<svg ${svgAttrs}><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></svg>`;
 

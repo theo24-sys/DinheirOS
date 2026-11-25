@@ -3,51 +3,43 @@ module.exports = {
   maxUsers: 5,
   defaultWallets: [
     {
-      name: 'Fare',
-      weeklyAmount: 420,
+      name: 'Food',
+      weeklyAmount: 780,
       dailyLimit: 0,
-      weeklyMaxCount: 3,
-      perAccessAmount: 140,
+      weeklyMaxCount: 4,
+      perAccessAmount: 195,
       rollover: true
     },
     {
-      name: 'Tokens',
-      weeklyAmount: 180,
-      dailyLimit: 1, // Max 1 withdrawal per day
+      name: 'Kplc',
+      weeklyAmount: 250,
+      dailyLimit: 0,
       weeklyMaxCount: 3,
-      perAccessAmount: 60,
+      perAccessAmount: 83,
+      rollover: true
+    },
+    {
+      name: 'Stake',
+      weeklyAmount: 150,
+      dailyLimit: 0,
+      weeklyMaxCount: 3,
+      perAccessAmount: 50,
+      rollover: true
+    },
+    {
+      name: 'Fare',
+      weeklyAmount: 150,
+      dailyLimit: 0,
+      weeklyMaxCount: 3,
+      perAccessAmount: 50,
       rollover: true
     },
     {
       name: 'Data',
       weeklyAmount: 100,
       dailyLimit: 0,
-      weeklyMaxCount: 2,
-      perAccessAmount: 50,
-      rollover: true
-    },
-    {
-      name: 'Meat',
-      weeklyAmount: 450,
-      dailyLimit: 0,
-      weeklyMaxCount: 3,
-      perAccessAmount: 150,
-      rollover: true
-    },
-    {
-      name: 'Betting',
-      weeklyAmount: 100,
-      dailyLimit: 0,
-      weeklyMaxCount: 2,
-      perAccessAmount: 50,
-      rollover: true
-    },
-    {
-      name: 'Energy',
-      weeklyAmount: 180,
-      dailyLimit: 0,
-      weeklyMaxCount: 3,
-      perAccessAmount: 60,
+      weeklyMaxCount: 5,
+      perAccessAmount: 20,
       rollover: true
     }
   ]

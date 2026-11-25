@@ -64,6 +64,7 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 4. Go to **Project Settings** → **API** and copy:
    - `Project URL`
    - `service_role` secret or secret API key. Do not use the `anon` / publishable key for the server.
+5. Run `npm install` after pulling changes so `package-lock.json` includes the server-side passkey verifier.
 
 ---
 
@@ -73,11 +74,16 @@ Every withdrawal must pass through 3 server-enforced security gates before any m
 3. Under **Environment Variables**, add:
    - `SUPABASE_URL`: Your Supabase Project URL.
    - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase key.
+   - `WEBAUTHN_RP_ID=dinheir-os.vercel.app` and `WEBAUTHN_ORIGIN=https://dinheir-os.vercel.app` (change these together for a custom app domain).
    - For live M-Pesa B2C payouts: `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `DARAJA_INITIATOR_NAME`, `DARAJA_SECURITY_CREDENTIAL`, and `MPESA_ENVIRONMENT=production`.
    - `CALLBACK_URL`: Your public HTTPS app URL ending in `/api/daraja/callback` (optional; this is the default).
 4. Click **Deploy**. Vercel will deploy the site and activate the automated Monday weekly reset cron (`vercel.json`).
 
 New users choose their 4-digit PIN during account setup and use it to sign in; no `PIN_SALT` environment variable is needed. PINs are salted per user and stored as hashes. If an existing deployment already has a `PIN_SALT` value, keep that same value until each existing user signs in once; successful sign-in migrates their PIN, after which the variable can be removed. Re-run `schema.sql` before deploying this change.
+
+After signing in with a PIN, open **Settings** to register a device passkey. The server verifies passkey signatures before creating a session; a device biometric prompt alone does not grant access. The fingerprint/passkey button appears on the sign-in screen after a passkey has been registered. Set `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` to your app’s hostname and HTTPS origin if you use a custom domain. Passkey verification requires Node.js 22 or later.
+
+Each wallet has an **Adjust weekly budget** action. A change applies immediately: the current balance changes by the same amount as the budget, preserving the amount already spent. The wallet’s per-access amount and withdrawal count limits remain unchanged.
 
 ---
 

@@ -58,6 +58,25 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_active BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.passkey_credentials (
+    credential_id TEXT PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    public_key TEXT NOT NULL,
+    sign_count BIGINT NOT NULL DEFAULT 0,
+    transports TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_passkey_credentials_user
+    ON public.passkey_credentials(user_id);
+
+CREATE TABLE IF NOT EXISTS public.passkey_challenges (
+    challenge TEXT PRIMARY KEY,
+    user_id INT REFERENCES public.users(id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL CHECK (purpose IN ('registration', 'authentication')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 5. PIN Attempts (Rate limiting / lockout)
 CREATE TABLE IF NOT EXISTS pin_attempts (
     id SERIAL PRIMARY KEY,
@@ -257,7 +276,57 @@ REVOKE ALL ON FUNCTION public.reserve_wallet_withdrawal(INTEGER, INTEGER, INTEGE
     FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.finish_wallet_withdrawal(TEXT, BOOLEAN, TEXT, TEXT, TEXT)
     FROM PUBLIC, anon, authenticated;
+CREATE OR REPLACE FUNCTION public.update_wallet_weekly_budget(
+    p_user_id INTEGER,
+    p_wallet_id INTEGER,
+    p_weekly_amount INTEGER
+)
+RETURNS TABLE (
+    wallet_id INTEGER,
+    weekly_amount INTEGER,
+    balance INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_wallet public.wallets%ROWTYPE;
+    v_spent INTEGER;
+BEGIN
+    IF p_weekly_amount IS NULL OR p_weekly_amount < 1 OR p_weekly_amount > 1000000 THEN
+        RAISE EXCEPTION 'Weekly budget must be between Ksh 1 and Ksh 1000000';
+    END IF;
+
+    SELECT *
+    INTO v_wallet
+    FROM public.wallets
+    WHERE id = p_wallet_id AND user_id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Wallet not found';
+    END IF;
+
+    v_spent := v_wallet.weekly_amount - v_wallet.balance;
+
+    UPDATE public.wallets AS w
+    SET weekly_amount = p_weekly_amount,
+        balance = GREATEST(p_weekly_amount - v_spent, 0),
+        updated_at = NOW()
+    WHERE w.id = p_wallet_id
+    RETURNING w.id, w.weekly_amount, w.balance
+    INTO wallet_id, weekly_amount, balance;
+
+    RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.update_wallet_weekly_budget(INTEGER, INTEGER, INTEGER)
+    FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_wallet_withdrawal(INTEGER, INTEGER, INTEGER, TEXT, TEXT)
     TO service_role;
 GRANT EXECUTE ON FUNCTION public.finish_wallet_withdrawal(TEXT, BOOLEAN, TEXT, TEXT, TEXT)
+    TO service_role;
+GRANT EXECUTE ON FUNCTION public.update_wallet_weekly_budget(INTEGER, INTEGER, INTEGER)
     TO service_role;

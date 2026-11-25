@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse
+} = require('@simplewebauthn/server');
 
 const db = require('./db');
 const auth = require('./auth');
@@ -12,6 +18,12 @@ const {
   MAX_B2C_AMOUNT
 } = require('./mpesa');
 const { resetDaily, resetWeekly } = require('./cron');
+
+function getWebAuthnConfig() {
+  const rpID = process.env.WEBAUTHN_RP_ID || 'dinheir-os.vercel.app';
+  const origin = process.env.WEBAUTHN_ORIGIN || `https://${rpID}`;
+  return { rpID, origin };
+}
 
 // -------------------------------------------------------------
 // Health Check
@@ -76,6 +88,172 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
+router.get('/auth/passkey/status', async (req, res) => {
+  try {
+    const credentials = await db.getAllPasskeyCredentials();
+    res.json({ available: credentials.length > 0 });
+  } catch (error) {
+    console.error('Passkey status error:', error);
+    res.status(503).json({ error: 'Could not check passkey availability.' });
+  }
+});
+
+router.post('/auth/passkey/register/options', auth.authMiddleware, async (req, res) => {
+  try {
+    const { rpID } = getWebAuthnConfig();
+    const credentials = await db.getPasskeyCredentials(req.user.id);
+    const options = await generateRegistrationOptions({
+      rpName: 'DinheirOS',
+      rpID,
+      userName: req.user.name,
+      attestationType: 'none',
+      authenticatorSelection: {
+        residentKey: 'required',
+        userVerification: 'required',
+        authenticatorAttachment: 'platform'
+      },
+      supportedAlgorithmIDs: [-7, -257],
+      excludeCredentials: credentials.map(credential => ({
+        id: credential.credential_id,
+        transports: credential.transports
+      }))
+    });
+
+    await db.createPasskeyChallenge(options.challenge, 'registration', req.user.id);
+    res.json({ challenge: options.challenge, options });
+  } catch (error) {
+    console.error('Passkey registration options error:', error);
+    res.status(500).json({ error: 'Could not start passkey setup.' });
+  }
+});
+
+router.post('/auth/passkey/register/verify', auth.authMiddleware, async (req, res) => {
+  try {
+    const { challenge, credential } = req.body || {};
+    if (!challenge || !credential) {
+      return res.status(400).json({ error: 'Passkey registration response is incomplete.' });
+    }
+
+    const pending = await db.consumePasskeyChallenge(challenge, 'registration', req.user.id);
+    if (!pending) {
+      return res.status(400).json({ error: 'Passkey setup expired. Please try again.' });
+    }
+
+    const { rpID, origin } = getWebAuthnConfig();
+    const verification = await verifyRegistrationResponse({
+      response: credential,
+      expectedChallenge: pending.challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      requireUserVerification: true
+    });
+    if (!verification.verified || !verification.registrationInfo) {
+      return res.status(400).json({ error: 'The device could not verify this passkey.' });
+    }
+
+    const { credential: registeredCredential } = verification.registrationInfo;
+    await db.savePasskeyCredential({
+      credentialId: registeredCredential.id,
+      userId: req.user.id,
+      publicKey: Buffer.from(registeredCredential.publicKey).toString('base64url'),
+      signCount: registeredCredential.counter,
+      transports: registeredCredential.transports || []
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Passkey registration verification error:', error);
+    res.status(400).json({ error: 'Passkey setup failed. Please try again.' });
+  }
+});
+
+router.post('/auth/passkey/login/options', async (req, res) => {
+  try {
+    const credentials = await db.getAllPasskeyCredentials();
+    if (!credentials.length) {
+      return res.status(404).json({ error: 'No passkey is registered. Sign in with your PIN and set one up in Settings.' });
+    }
+
+    const { rpID } = getWebAuthnConfig();
+    const options = await generateAuthenticationOptions({
+      rpID,
+      userVerification: 'required',
+      allowCredentials: credentials.map(credential => ({
+        id: credential.credential_id,
+        transports: credential.transports
+      }))
+    });
+
+    await db.createPasskeyChallenge(options.challenge, 'authentication');
+    res.json({ challenge: options.challenge, options });
+  } catch (error) {
+    console.error('Passkey login options error:', error);
+    res.status(500).json({ error: 'Could not start passkey sign-in.' });
+  }
+});
+
+router.post('/auth/passkey/login/verify', async (req, res) => {
+  try {
+    const { challenge, credential } = req.body || {};
+    if (!challenge || !credential || !credential.id) {
+      return res.status(400).json({ error: 'Passkey response is incomplete.' });
+    }
+
+    const pending = await db.consumePasskeyChallenge(challenge, 'authentication');
+    if (!pending) {
+      return res.status(400).json({ error: 'Passkey sign-in expired. Please try again.' });
+    }
+
+    const storedCredential = await db.getPasskeyCredential(credential.id);
+    if (!storedCredential) {
+      return res.status(401).json({ error: 'This passkey is not registered. Use your PIN.' });
+    }
+
+    const { rpID, origin } = getWebAuthnConfig();
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge: pending.challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      requireUserVerification: true,
+      credential: {
+        id: storedCredential.credential_id,
+        publicKey: Buffer.from(storedCredential.public_key, 'base64url'),
+        counter: Number(storedCredential.sign_count),
+        transports: storedCredential.transports || []
+      }
+    });
+    if (!verification.verified) {
+      return res.status(401).json({ error: 'Passkey verification failed. Use your PIN.' });
+    }
+
+    const user = await db.getUserById(storedCredential.user_id);
+    if (!user || !user.is_active) {
+      return res.status(401).json({ error: 'This user is inactive. Use an active account.' });
+    }
+
+    await db.updatePasskeyCounter(
+      storedCredential.credential_id,
+      verification.authenticationInfo.newCounter
+    );
+
+    const token = crypto.randomUUID();
+    await db.createSession(user.id, token);
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phone_number
+      }
+    });
+  } catch (error) {
+    console.error('Passkey login verification error:', error);
+    res.status(401).json({ error: 'Passkey verification failed. Use your PIN.' });
+  }
+});
+
 // Lock / Logout session
 router.post('/auth/lock', async (req, res) => {
   try {
@@ -106,6 +284,28 @@ router.get('/status', auth.authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Error fetching wallets:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/wallets/:walletId/budget', auth.authMiddleware, async (req, res) => {
+  const walletId = Number(req.params.walletId);
+  const weeklyAmount = Number(req.body && req.body.weeklyAmount);
+  if (!Number.isSafeInteger(walletId) || walletId < 1) {
+    return res.status(400).json({ error: 'Invalid wallet.' });
+  }
+  if (!Number.isSafeInteger(weeklyAmount) || weeklyAmount < 1 || weeklyAmount > 1000000) {
+    return res.status(400).json({ error: 'Weekly budget must be a whole number between Ksh 1 and Ksh 1,000,000.' });
+  }
+
+  try {
+    const wallet = await db.updateWalletWeeklyBudget(req.user.id, walletId, weeklyAmount);
+    res.json({ success: true, wallet });
+  } catch (error) {
+    if (/Wallet not found/i.test(error.message || '')) {
+      return res.status(404).json({ error: 'Wallet not found.' });
+    }
+    console.error('Wallet budget update error:', error);
+    res.status(500).json({ error: 'Could not update the wallet budget.' });
   }
 });
 

@@ -212,6 +212,22 @@ async function updateWallet(walletId, updates) {
   return data;
 }
 
+async function updateWalletWeeklyBudget(userId, walletId, weeklyAmount) {
+  const client = getClient();
+  const { data, error } = await client.rpc('update_wallet_weekly_budget', {
+    p_user_id: userId,
+    p_wallet_id: walletId,
+    p_weekly_amount: weeklyAmount
+  });
+  if (error) throw error;
+
+  const wallet = Array.isArray(data) ? data[0] : data;
+  if (!wallet) {
+    throw new Error('Budget update did not return a wallet.');
+  }
+  return wallet;
+}
+
 // -------------------------------------------------------------
 // Transactions
 // -------------------------------------------------------------
@@ -402,6 +418,97 @@ async function cleanupExpiredSessions() {
   await client.from('sessions').delete().lt('last_active', cutoff);
 }
 
+async function createPasskeyChallenge(challenge, purpose, userId = null) {
+  const client = getClient();
+  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { error: cleanupError } = await client
+    .from('passkey_challenges')
+    .delete()
+    .lt('created_at', cutoff);
+  if (cleanupError) throw cleanupError;
+
+  const { error } = await client
+    .from('passkey_challenges')
+    .insert([{ challenge, purpose, user_id: userId }]);
+  if (error) throw error;
+}
+
+async function consumePasskeyChallenge(challenge, purpose, userId = null) {
+  const client = getClient();
+  const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  let query = client
+    .from('passkey_challenges')
+    .delete()
+    .eq('challenge', challenge)
+    .eq('purpose', purpose)
+    .gt('created_at', cutoff);
+
+  query = userId === null ? query.is('user_id', null) : query.eq('user_id', userId);
+
+  const { data, error } = await query.select('challenge, user_id').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getPasskeyCredentials(userId) {
+  const client = getClient();
+  const { data, error } = await client
+    .from('passkey_credentials')
+    .select('credential_id, public_key, sign_count, transports, user_id')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return data || [];
+}
+
+async function getAllPasskeyCredentials() {
+  const client = getClient();
+  const { data, error } = await client
+    .from('passkey_credentials')
+    .select('credential_id, public_key, sign_count, transports, user_id');
+  if (error) throw error;
+  return data || [];
+}
+
+async function getPasskeyCredential(credentialId) {
+  const client = getClient();
+  const { data, error } = await client
+    .from('passkey_credentials')
+    .select('credential_id, public_key, sign_count, transports, user_id')
+    .eq('credential_id', credentialId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function savePasskeyCredential({
+  credentialId,
+  userId,
+  publicKey,
+  signCount,
+  transports
+}) {
+  const client = getClient();
+  const { error } = await client
+    .from('passkey_credentials')
+    .insert([{
+      credential_id: credentialId,
+      user_id: userId,
+      public_key: publicKey,
+      sign_count: signCount,
+      transports: transports || []
+    }]);
+  if (error) throw error;
+}
+
+async function updatePasskeyCounter(credentialId, signCount) {
+  const client = getClient();
+  const { error } = await client
+    .from('passkey_credentials')
+    .update({ sign_count: signCount })
+    .eq('credential_id', credentialId);
+  if (error) throw error;
+}
+
 // -------------------------------------------------------------
 // PIN Attempts & Lockout
 // -------------------------------------------------------------
@@ -486,6 +593,7 @@ module.exports = {
   getUserWallets,
   getWalletByName,
   updateWallet,
+  updateWalletWeeklyBudget,
   createTransaction,
   reserveWalletWithdrawal,
   saveWithdrawalConversationId,
@@ -496,6 +604,13 @@ module.exports = {
   validateSession,
   deleteSession,
   cleanupExpiredSessions,
+  createPasskeyChallenge,
+  consumePasskeyChallenge,
+  getPasskeyCredentials,
+  getAllPasskeyCredentials,
+  getPasskeyCredential,
+  savePasskeyCredential,
+  updatePasskeyCounter,
   logPinAttempt,
   isUserLockedOut,
   resetDailyWallets,

@@ -569,6 +569,73 @@
     .settings-btn { width: 100%; height: 52px; border-radius: 18px; background: rgba(255,255,255,0.08); color: #fff; text-align: left; padding: 0 16px; font-weight: 700; border: 1px solid rgba(255,255,255,0.12); }
     .muted { color: var(--muted); }
 
+    .wallet-budget-btn {
+      width: 100%;
+      min-height: 36px;
+      margin-top: 9px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 12px;
+      background: rgba(15,12,41,0.2);
+      color: #fff;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .wallet-budget-btn:hover { background: rgba(15,12,41,0.35); }
+
+    .budget-modal[hidden] { display: none; }
+    .budget-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(5,4,20,0.74);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .budget-dialog {
+      width: min(100%, 390px);
+      padding: 22px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 24px;
+      background: linear-gradient(145deg, #211d48, #11102a);
+      box-shadow: 0 28px 80px rgba(0,0,0,0.5);
+    }
+    .budget-dialog h2 { font-size: 20px; margin-bottom: 5px; }
+    .budget-dialog p { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+    .budget-dialog label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 7px; }
+    .budget-dialog input {
+      width: 100%;
+      min-height: 50px;
+      padding: 0 14px;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 14px;
+      outline: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font: inherit;
+      font-size: 18px;
+      font-weight: 750;
+    }
+    .budget-dialog input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(167,139,250,0.18); }
+    .budget-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    .budget-dialog-actions button {
+      min-height: 46px;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 14px;
+      color: #fff;
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+      background: rgba(255,255,255,0.08);
+    }
+    .budget-dialog-actions .primary { background: var(--gradient-btn); border: 0; }
+    .budget-dialog-actions button:disabled { opacity: 0.6; cursor: wait; }
+
     .settings-toggle {
       display: flex;
       align-items: center;
@@ -991,10 +1058,7 @@
           <div class="pin-dots" id="dots"></div>
           <div class="pin-grid" id="pad"></div>
           <div class="fingerprint-row">
-            <button id="fpBtn" class="fingerprint-btn" type="button"><span class="icon">🔐</span><span>Fingerprint</span></button>
-          </div>
-          <div class="fingerprint-row" style="margin-top:10px;">
-            <button id="passkeySetupBtn" class="fingerprint-btn" type="button" style="min-width:240px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16);display:flex;"><span class="icon">🪪</span><span>Set Up Passkey</span></button>
+            <button id="fpBtn" class="fingerprint-btn" type="button"><span class="icon">🔐</span><span>Use fingerprint / passkey</span></button>
           </div>
           <div class="fingerprint-row" style="margin-top:10px;">
             <button id="authInstallBtn" class="fingerprint-btn" type="button" style="min-width:240px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.35);display:flex;"><span class="icon">📲</span><span>Install DinheirOS</span></button>
@@ -1106,7 +1170,7 @@
               <div class="settings-toggle">
                 <div class="toggle-copy">
                   <strong>Biometric lock</strong>
-                  <span>Unlock with fingerprint or device passkey when the app locks.</span>
+                  <span>A registered passkey can use your fingerprint or device screen lock to unlock.</span>
                 </div>
                 <label class="toggle-switch" aria-label="Enable biometric lock">
                   <input id="biometricLockToggle" type="checkbox" />
@@ -1117,12 +1181,25 @@
               <button class="settings-btn" id="settingsInstallBtn" type="button" style="background:linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.18));border:1px solid rgba(16,185,129,0.35);"><span style="margin-right:6px;">📲</span> Install DinheirOS</button>
               <button class="settings-btn" type="button" onclick="lockApp()">🔒 Switch / Lock User</button>
               <button class="settings-btn" type="button" onclick="showToast('DinheirOS Cloud v2.1 (Daraja Till Enabled)', 'success')">App version (Cloud v2.1)</button>
-              <button id="settingsPasskeyBtn" class="settings-btn" type="button" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;">Set Up Passkey</button>
+              <button id="settingsPasskeyBtn" class="settings-btn" type="button" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:none;">Set up fingerprint / passkey</button>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="budgetModal" class="budget-modal" role="dialog" aria-modal="true" aria-labelledby="budgetDialogTitle" hidden>
+    <form id="budgetForm" class="budget-dialog">
+      <h2 id="budgetDialogTitle">Adjust weekly budget</h2>
+      <p id="budgetDialogNote">The current balance will change by the same amount, preserving this week’s spending so far.</p>
+      <label for="budgetAmount">New weekly budget (Ksh)</label>
+      <input id="budgetAmount" name="weeklyAmount" type="number" min="1" max="1000000" step="1" inputmode="numeric" required />
+      <div class="budget-dialog-actions">
+        <button id="budgetCancel" type="button">Cancel</button>
+        <button id="budgetSave" class="primary" type="submit">Save budget</button>
+      </div>
+    </form>
   </div>
 
   <nav class="bottom-nav">
@@ -1145,6 +1222,10 @@
     let currentTab = 'home';
     let cachedWallets = [];
     let cachedHistory = [];
+    let passkeyAvailable = false;
+    let passkeyAutoAttempted = false;
+    let selectedBudgetWallet = null;
+    let budgetReturnFocus = null;
 
     const walletDisplayNames = {
       Fare: 'Fare',
@@ -1614,43 +1695,6 @@
       }
     }
 
-    async function doFingerprint() {
-      if (!window.PublicKeyCredential) {
-        showToast('Biometric not supported on this device', 'warning');
-        return;
-      }
-      try {
-        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (!available) {
-          showToast('No fingerprint sensor found', 'warning');
-          return;
-        }
-        const credential = await navigator.credentials.get({
-          publicKey: {
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            rpId: window.location.hostname,
-            allowCredentials: [],
-            userVerification: 'required',
-            timeout: 60000
-          }
-        });
-        if (credential) {
-          const r = await api('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ biometric: true })
-          });
-          if (r.ok) {
-            const j = await r.json();
-            saveToken(j.token);
-            showNav(true);
-            showDashboard();
-          }
-        }
-      } catch (err) {
-        showToast('Fingerprint failed — use PIN instead', 'warning');
-      }
-    }
-
     function walletLabel(name) { return walletDisplayNames[name] || name; }
     function walletColor(name) { return walletColors[name] || 'linear-gradient(135deg, #7c3aed, #a78bfa)'; }
     function walletIconSvg(name) { return walletIcons[name] || walletFallbackIcon; }
@@ -1666,11 +1710,92 @@
       return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get && navigator.credentials.create && window.isSecureContext);
     }
 
-    function getRpId() {
-      if (!window.location.hostname || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return undefined;
+    function base64UrlToBytes(value) {
+      const base64 = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
+      const binary = atob(base64);
+      return Uint8Array.from(binary, character => character.charCodeAt(0));
+    }
+
+    function bytesToBase64Url(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let index = 0; index < bytes.length; index += 1) {
+        binary += String.fromCharCode(bytes[index]);
       }
-      return window.location.hostname;
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    }
+
+    function decodePasskeyOptions(options, registration) {
+      const decoded = { ...options, challenge: base64UrlToBytes(options.challenge) };
+      if (registration && options.user) {
+        decoded.user = { ...options.user, id: base64UrlToBytes(options.user.id) };
+      }
+      ['allowCredentials', 'excludeCredentials'].forEach(key => {
+        if (Array.isArray(options[key])) {
+          decoded[key] = options[key].map(item => ({ ...item, id: base64UrlToBytes(item.id) }));
+        }
+      });
+      return decoded;
+    }
+
+    function serializePasskeyCredential(credential, registration) {
+      const response = credential.response;
+      const serialized = {
+        id: credential.id,
+        rawId: bytesToBase64Url(credential.rawId),
+        type: credential.type,
+        clientExtensionResults: credential.getClientExtensionResults(),
+        response: {
+          clientDataJSON: bytesToBase64Url(response.clientDataJSON)
+        }
+      };
+      if (credential.authenticatorAttachment) {
+        serialized.authenticatorAttachment = credential.authenticatorAttachment;
+      }
+
+      if (registration) {
+        serialized.response.attestationObject = bytesToBase64Url(response.attestationObject);
+        if (typeof response.getTransports === 'function') {
+          serialized.response.transports = response.getTransports();
+        }
+      } else {
+        serialized.response.authenticatorData = bytesToBase64Url(response.authenticatorData);
+        serialized.response.signature = bytesToBase64Url(response.signature);
+        serialized.response.userHandle = response.userHandle
+          ? bytesToBase64Url(response.userHandle)
+          : null;
+      }
+      return serialized;
+    }
+
+    async function readApiJson(response) {
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'The request could not be completed.');
+      }
+      return result;
+    }
+
+    async function loadPasskeyStatus() {
+      if (!isWebAuthnSupported()) {
+        passkeyAvailable = false;
+        updateFingerprintVisibility();
+        return;
+      }
+      try {
+        const response = await fetch('/api/auth/passkey/status');
+        const result = await readApiJson(response);
+        passkeyAvailable = Boolean(result.available);
+      } catch (error) {
+        console.error('Passkey status check failed:', error);
+        passkeyAvailable = false;
+      }
+      if (!passkeyAvailable) {
+        localStorage.removeItem('dinheiros_biometric_lock');
+        localStorage.removeItem('dinheiros_passkey');
+      }
+      updateFingerprintVisibility();
+      maybeAutoBiometricUnlock();
     }
 
     function setPasskeyState(enabled) {
@@ -1687,6 +1812,10 @@
     }
 
     function setBiometricLockEnabled(enabled) {
+      if (enabled && (!passkeyAvailable || !isWebAuthnSupported())) {
+        showToast('Set up a passkey first to enable biometric lock.', 'warning');
+        return;
+      }
       if (enabled) localStorage.setItem('dinheiros_biometric_lock', '1');
       else localStorage.removeItem('dinheiros_biometric_lock');
       updateBiometricLockUI();
@@ -1694,7 +1823,10 @@
 
     function updateBiometricLockUI() {
       const toggle = document.getElementById('biometricLockToggle');
-      if (toggle) toggle.checked = isBiometricLockEnabled();
+      if (toggle) {
+        toggle.checked = isBiometricLockEnabled();
+        toggle.disabled = !passkeyAvailable || !isWebAuthnSupported();
+      }
       const footer = document.getElementById('authFooter');
       if (footer && isBiometricLockEnabled()) {
         footer.textContent = 'Biometric lock is enabled for quick unlock.';
@@ -1707,40 +1839,32 @@
         return;
       }
       try {
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const userId = crypto.getRandomValues(new Uint8Array(16));
+        const optionsResponse = await api('/auth/passkey/register/options', { method: 'POST' });
+        const optionsResult = await readApiJson(optionsResponse);
         const credential = await navigator.credentials.create({
-          publicKey: {
-            challenge,
-            rp: { name: 'DinheirOS', ...(getRpId() ? { id: getRpId() } : {}) },
-            user: {
-              id: userId,
-              name: 'timothy@dinheiros.local',
-              displayName: 'Timothy'
-            },
-            pubKeyCredParams: [
-              { type: 'public-key', alg: -7 },
-              { type: 'public-key', alg: -257 }
-            ],
-            authenticatorSelection: {
-              authenticatorAttachment: 'platform',
-              residentKey: 'preferred',
-              userVerification: 'required'
-            },
-            timeout: 60000,
-            attestation: 'none'
-          }
+          publicKey: decodePasskeyOptions(optionsResult.options, true)
         });
 
-        if (credential) {
-          setPasskeyState(true);
-          updateFingerprintVisibility();
-          showToast('Passkey enabled. Use fingerprint or device passkey to unlock.', 'success');
-          const footer = document.getElementById('authFooter');
-          if (footer) footer.textContent = 'Passkey is ready on this device.';
-        }
+        if (!credential) throw new Error('The device did not create a passkey.');
+        const verifyResponse = await api('/auth/passkey/register/verify', {
+          method: 'POST',
+          body: JSON.stringify({
+            challenge: optionsResult.challenge,
+            credential: serializePasskeyCredential(credential, true)
+          })
+        });
+        await readApiJson(verifyResponse);
+        passkeyAvailable = true;
+        setPasskeyState(true);
+        updateFingerprintVisibility();
+        showToast('Passkey saved to your account. You can now unlock with your device.', 'success');
       } catch (err) {
-        showToast('Passkey setup cancelled or failed', 'warning');
+        if (err.name === 'NotAllowedError') {
+          showToast('Passkey setup was cancelled.', 'warning');
+        } else {
+          console.error('Passkey setup failed:', err);
+          showToast(err.message || 'Passkey setup failed. Please try again.', 'error');
+        }
       }
     }
 
@@ -1750,35 +1874,39 @@
         return;
       }
       try {
+        const optionsResponse = await fetch('/api/auth/passkey/login/options', { method: 'POST' });
+        const optionsResult = await readApiJson(optionsResponse);
         const credential = await navigator.credentials.get({
-          publicKey: {
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            rpId: getRpId(),
-            allowCredentials: [],
-            userVerification: 'required',
-            timeout: 60000
-          }
+          publicKey: decodePasskeyOptions(optionsResult.options, false)
         });
+        if (!credential) throw new Error('No passkey was selected.');
 
-        if (credential) {
-          const r = await api('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ biometric: true })
-          });
-          if (r.ok) {
-            const j = await r.json();
-            saveToken(j.token);
-            showNav(true);
-            showDashboard();
-          }
-        }
+        const verifyResponse = await fetch('/api/auth/passkey/login/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challenge: optionsResult.challenge,
+            credential: serializePasskeyCredential(credential, false)
+          })
+        });
+        const result = await readApiJson(verifyResponse);
+        saveToken(result.token);
+        if (result.user) saveUser(result.user);
+        showNav(true);
+        showDashboard();
       } catch (err) {
-        showToast(isPasskeyEnabled() ? 'Passkey unlock failed — use PIN instead' : 'Set up a passkey first, then use fingerprint/passkey unlock', 'warning');
+        if (err.name === 'NotAllowedError') {
+          showToast('No passkey was selected or verification was cancelled. Use your PIN instead.', 'warning');
+        } else {
+          console.error('Passkey sign-in failed:', err);
+          showToast(err.message || 'Passkey sign-in failed. Use your PIN instead.', 'error');
+        }
       }
     }
 
     function maybeAutoBiometricUnlock() {
-      if (isBiometricLockEnabled() && isPasskeyEnabled() && isWebAuthnSupported()) {
+      if (!passkeyAutoAttempted && passkeyAvailable && isBiometricLockEnabled() && isPasskeyEnabled() && isWebAuthnSupported()) {
+        passkeyAutoAttempted = true;
         setAuthMessage('Biometric lock enabled — unlocking...');
         setTimeout(() => {
           void authenticateWithPasskey().catch((err) => {
@@ -1886,27 +2014,31 @@
                 '<span class="wallet-ic">' + walletIconSvg(w.name) + '</span>' +
                 '<div>' +
                   '<div class="wallet-name">' + walletLabel(w.name) + '</div>' +
-                  '<div class="wallet-tag">Weekly allowance</div>' +
+                  '<div class="wallet-tag">Available this week</div>' +
                 '</div>' +
               '</div>' +
               (isLocked ? '<div class="lock-badge">LOCKED</div>' : '') +
             '</div>' +
             '<div class="wallet-balance"><span class="cur">Ksh</span><span class="val">' + Number(w.balance || 0).toLocaleString() + '</span></div>' +
+            '<div class="wallet-uses">Weekly budget: Ksh ' + Number(w.weekly_amount || 0).toLocaleString() + '</div>' +
             '<div class="wallet-meter">' +
               '<div class="wallet-progress-track"><div class="wallet-progress-fill" style="width:' + usedPct + '%"></div></div>' +
               '<div class="wallet-uses"><span>' + (w.used_this_week || 0) + ' of ' + (w.weekly_max_count || 0) + ' used</span><span>' + (w.daily_limit ? 'Max 1/day' : 'Resets Mon') + '</span></div>' +
+                  '<button class="wallet-budget-btn" type="button">Adjust weekly budget</button>' +
               '<button class="request-btn" ' + (isLocked || todayUsed ? 'disabled' : '') + '>' +
                 (isLocked ? '🔒 Locked' : (todayUsed ? '✓ Used today' : 'Send Ksh ' + perAccess)) +
               '</button>' +
             '</div>';
 
-          const btn = card.querySelector('button');
+          const btn = card.querySelector('.request-btn');
           if (btn) {
             btn.addEventListener('click', (ev) => {
               showRipple(btn, ev);
               if (!isLocked && !todayUsed) requestAccess(w.name, perAccess, btn);
             });
           }
+          const budgetBtn = card.querySelector('.wallet-budget-btn');
+          if (budgetBtn) budgetBtn.addEventListener('click', () => openBudgetDialog(w, budgetBtn));
 
           cards.appendChild(card);
         });
@@ -1920,7 +2052,13 @@
         }
 
         const cardsFull = document.getElementById('walletCardsFull');
-        if (cardsFull) cardsFull.innerHTML = cards.innerHTML;
+        if (cardsFull) {
+          cardsFull.innerHTML = cards.innerHTML;
+          cardsFull.querySelectorAll('.wallet-budget-btn').forEach((budgetBtn, index) => {
+            const wallet = wallets[index];
+            if (wallet) budgetBtn.addEventListener('click', () => openBudgetDialog(wallet, budgetBtn));
+          });
+        }
 
         const quickAccess = document.getElementById('quickAccess');
         if (quickAccess) {
@@ -1945,6 +2083,67 @@
       } catch (err) {
         console.error('loadWallets error', err);
         cards.innerHTML = '<div style="color:#ef4444;text-align:center;padding:24px;">Error loading wallets</div>';
+      }
+    }
+
+    function openBudgetDialog(wallet, returnFocus) {
+      const modal = document.getElementById('budgetModal');
+      const input = document.getElementById('budgetAmount');
+      const title = document.getElementById('budgetDialogTitle');
+      const note = document.getElementById('budgetDialogNote');
+      if (!modal || !input || !wallet) return;
+
+      selectedBudgetWallet = wallet;
+      budgetReturnFocus = returnFocus || null;
+      title.textContent = `Adjust ${walletLabel(wallet.name)} budget`;
+      note.textContent = `Current balance: Ksh ${Number(wallet.balance || 0).toLocaleString()}. Changing the weekly budget adjusts this week's balance by the same amount and keeps spending so far unchanged.`;
+      input.value = String(Number(wallet.weekly_amount || 0));
+      modal.hidden = false;
+      input.focus();
+      input.select();
+    }
+
+    function closeBudgetDialog() {
+      const modal = document.getElementById('budgetModal');
+      if (modal) modal.hidden = true;
+      selectedBudgetWallet = null;
+      if (budgetReturnFocus && budgetReturnFocus.isConnected) budgetReturnFocus.focus();
+      budgetReturnFocus = null;
+    }
+
+    async function saveWalletBudget(event) {
+      event.preventDefault();
+      if (!selectedBudgetWallet) return;
+
+      const input = document.getElementById('budgetAmount');
+      const saveButton = document.getElementById('budgetSave');
+      const walletName = selectedBudgetWallet.name;
+      const weeklyAmount = Number(input.value);
+      if (!Number.isSafeInteger(weeklyAmount) || weeklyAmount < 1 || weeklyAmount > 1000000) {
+        showToast('Enter a whole-number budget from Ksh 1 to Ksh 1,000,000.', 'warning');
+        return;
+      }
+
+      saveButton.disabled = true;
+      saveButton.textContent = 'Saving…';
+      try {
+        const response = await api(`/wallets/${selectedBudgetWallet.id}/budget`, {
+          method: 'PATCH',
+          body: JSON.stringify({ weeklyAmount })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Could not update the budget.');
+        }
+        closeBudgetDialog();
+        await loadWallets();
+        showToast(`${walletLabel(walletName)} budget updated.`, 'success');
+      } catch (error) {
+        console.error('Wallet budget update failed:', error);
+        showToast(error.message || 'Could not update the budget.', 'error');
+      } finally {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save budget';
       }
     }
 
@@ -2088,6 +2287,8 @@
         showNav(false);
         resetPinEntry();
         renderPinLogin();
+        passkeyAutoAttempted = false;
+        maybeAutoBiometricUnlock();
       }
     }
 
@@ -2106,6 +2307,8 @@
           showNav(false);
           resetPinEntry();
           renderPinLogin();
+          passkeyAutoAttempted = false;
+          maybeAutoBiometricUnlock();
         }
       })();
     });
@@ -2170,22 +2373,29 @@
 
     function renderPinSetup() { setAuthMode('setup'); showAuthScreen(); resetPinEntry(); renderPad(onPad); updateDots(); setAuthMessage('Set your access PIN', 'success'); }
 
-    function renderPinLogin() { setAuthMode('login'); showAuthScreen(); resetPinEntry(); renderPad(onPad); updateDots(); setAuthMessage(isBiometricLockEnabled() ? 'Biometric lock available — use fingerprint or PIN' : 'Enter PIN to unlock'); }
+    function renderPinLogin() { setAuthMode('login'); showAuthScreen(); resetPinEntry(); renderPad(onPad); updateDots(); setAuthMessage(passkeyAvailable ? 'Enter your PIN or use your device passkey.' : 'Enter PIN to unlock'); }
 
     function updateFingerprintVisibility() {
       const fpBtn = document.getElementById('fpBtn');
-      const setupBtn = document.getElementById('passkeySetupBtn');
       const settingsBtn = document.getElementById('settingsPasskeyBtn');
       const fpLabel = fpBtn ? fpBtn.querySelector('.icon + span') : null;
       if (isWebAuthnSupported()) {
-        if (fpBtn) fpBtn.style.display = 'flex';
-        if (fpLabel) fpLabel.textContent = isPasskeyEnabled() ? 'Use Passkey' : 'Fingerprint';
-        if (setupBtn) setupBtn.style.display = 'flex';
+        if (fpBtn) fpBtn.style.display = passkeyAvailable ? 'flex' : 'none';
+        if (fpLabel) fpLabel.textContent = 'Use fingerprint / passkey';
         if (settingsBtn) settingsBtn.style.display = 'block';
+        updateBiometricLockUI();
+        if (!passkeyAvailable) {
+          const footer = document.getElementById('authFooter');
+          if (footer && pinMode === 'login') footer.textContent = 'Sign in with your PIN, then set up a passkey in Settings.';
+        }
       } else {
         if (fpBtn) fpBtn.style.display = 'none';
-        if (setupBtn) setupBtn.style.display = 'none';
         if (settingsBtn) settingsBtn.style.display = 'none';
+        const toggle = document.getElementById('biometricLockToggle');
+        if (toggle) {
+          toggle.checked = false;
+          toggle.disabled = true;
+        }
         const footer = document.getElementById('authFooter');
         if (footer) footer.textContent = 'This device does not expose passkey or fingerprint APIs.';
       }
@@ -2194,16 +2404,28 @@
     async function init() {
       updateFingerprintVisibility();
       const fpBtn = document.getElementById('fpBtn');
-      const passkeySetupBtn = document.getElementById('passkeySetupBtn');
       const settingsPasskeyBtn = document.getElementById('settingsPasskeyBtn');
       const biometricLockToggle = document.getElementById('biometricLockToggle');
+      const budgetForm = document.getElementById('budgetForm');
+      const budgetCancel = document.getElementById('budgetCancel');
+      const budgetModal = document.getElementById('budgetModal');
       const navHome = document.getElementById('nav-home');
       const navWallets = document.getElementById('nav-wallets');
       const navHistory = document.getElementById('nav-history');
       const navSettings = document.getElementById('nav-settings');
       if (fpBtn) fpBtn.addEventListener('click', doFingerprint);
-      if (passkeySetupBtn) passkeySetupBtn.addEventListener('click', setupPasskey);
       if (settingsPasskeyBtn) settingsPasskeyBtn.addEventListener('click', setupPasskey);
+      void loadPasskeyStatus();
+      if (budgetForm) budgetForm.addEventListener('submit', saveWalletBudget);
+      if (budgetCancel) budgetCancel.addEventListener('click', closeBudgetDialog);
+      if (budgetModal) {
+        budgetModal.addEventListener('click', event => {
+          if (event.target === budgetModal) closeBudgetDialog();
+        });
+        budgetModal.addEventListener('keydown', event => {
+          if (event.key === 'Escape') closeBudgetDialog();
+        });
+      }
       const pwaInstallBtn = document.getElementById('pwaInstallBtn');
       const settingsInstallBtn = document.getElementById('settingsInstallBtn');
       const authInstallBtn = document.getElementById('authInstallBtn');
@@ -2215,7 +2437,13 @@
       syncInstallUI();
       if (biometricLockToggle) {
         biometricLockToggle.checked = isBiometricLockEnabled();
+        biometricLockToggle.disabled = !passkeyAvailable;
         biometricLockToggle.addEventListener('change', () => {
+          if (biometricLockToggle.checked && !passkeyAvailable) {
+            biometricLockToggle.checked = false;
+            showToast('Set up a passkey first.', 'warning');
+            return;
+          }
           setBiometricLockEnabled(biometricLockToggle.checked);
           showToast(biometricLockToggle.checked ? 'Biometric lock enabled' : 'Biometric lock disabled', biometricLockToggle.checked ? 'success' : 'warning');
         });
